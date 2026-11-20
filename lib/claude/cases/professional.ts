@@ -1,0 +1,94 @@
+import { field as f, fixture as r, quantity as q } from "../casework";
+import type { Casework } from "../casework";
+
+export const professionalCases = {
+  "support-pilot": {
+    station: "Pilot decision board", view: "operations",
+    opening: "We can test the new support service this week. Forty disputes are coming through the pilot. I need a stop rule before it goes live.",
+    task: "Fit the candidate inside the service and finance limits. Record what stops promotion and who handles disputed tickets.",
+    references: [["Controlled trial", "A: 1.6 s p95 and 1.8¢ per resolution. B: 2.7 s and 3.3¢. Staff review adds 0.2 s and 0.1¢."], ["Operating limits", "p95 under 2 s; at most 2¢ per resolution. Staff approve every dispute before closure."], ["Escalation policy", "Stop immediately after the first dispute closed without approval. Name the staffed queue in the plan."]],
+    fields: [f("candidate", "Pilot candidate", "B", "B", "A"), f("close", "Disputed closures", "Audit after", "Audit after", "Staff before closure"), q("stop", "Unauthorized closures tolerated", 3, 0, 10, "tickets"), f("owner", "Owner for held disputes", "Unassigned", "Unassigned", "Staffed queue")],
+    cases: [r("Pilot at expected load", "Route A adds review over its 1.6 s and 1.8¢ base.", [["candidate", "A"], ["close", "Staff before closure"]], "The pilot exceeds a service target or a dispute can close without staff.", "1.8 s p95 and 1.9¢ per resolution. All 40 disputes are held for review."),
+      r("Supervisor sees held disputes", "The plan needs an owner who can act on that queue.", [["owner", "Staffed queue"]], "The disputes are held but lack an operating owner.", "Disputes are assigned to the staffed queue.")],
+    retest: r("A rollout alarm fires", "One dispute was closed without recorded approval in the pilot trial.", [["stop", 0], ["close", "Staff before closure"]], "The rollout continues after a prohibited closure.", "Promotion stops after the first incorrect closure. The staff gate stays in the decision record."),
+    output: ({ candidate, close, stop, owner }) => {
+      const staff = close === "Staff before closure";
+      const latency = (candidate === "A" ? 1.6 : 2.7) + (staff ? .2 : 0);
+      const cost = (candidate === "A" ? 1.8 : 3.3) + (staff ? .1 : 0);
+      return [["Decision record", `Candidate ${candidate}\np95: ${latency.toFixed(1)} s · target under 2 s\n${cost.toFixed(1)}¢ per resolution · limit 2¢\n${staff ? "40 disputes held for approval" : "Audited after closure"}\nOwner: ${owner}\nStop after more than ${stop} unauthorized closures`]];
+    },
+    debrief: "Combine measured performance with hard authorization constraints. Use a deterministic approval gate, a named operating owner and an observable rollback trigger.", objectives: ["6.3"],
+  },
+  "public-permit-discovery": {
+    station: "Service pilot plan", view: "operations",
+    opening: "The sponsor asked for a chatbot. Applicants say the longest wait starts when we ask for a missing attachment.",
+    task: "Compare the service record and test costs. Assemble a pilot the counter and policy teams could approve.",
+    references: [["Journey log", "Drafting takes 10 min. Incomplete submissions wait two extra days for an attachment."], ["Cost sheet", "A costs 1¢ initially plus a 3¢ retry half the time. B costs 2.2¢ at the same SLA."], ["Policy and support owners", "Staff approve issuance. Support may show the published stage only. Disputed-case holdout failed in the broad trial."]],
+    fields: [f("scope", "First change", "FAQ bot", "FAQ bot", "Attachment precheck"), f("issue", "Issuance authority", "Research agent", "Research agent", "Staff gate"), q("a", "A cost per resolved case", 10, 0, 100, "tenths of a cent"), f("status", "What support can show", "Every change", "Every change", "Published stage"), f("rollout", "Rollout scope", "Broad", "Broad", "Limited with stop rule")],
+    cases: [r("Incomplete application", "The first case is missing a required attachment.", [["scope", "Attachment precheck"], ["issue", "Staff gate"]], "The pilot speeds drafting while the incomplete case still enters the queue or bypasses issuance control.", "A missing attachment is caught at submission. Issuance stays with staff."),
+      r("Sponsor checks the cost sheet", "Half the initial A requests incur the retry charge.", [["a", 25]], "Route A’s reported figure omits or overcounts retries.", "A averages 2.5¢ per resolution. B costs 2.2¢ at the same SLA.")],
+    retest: r("Policy status changes before sign-off", "The broader population includes the failing dispute slice.", [["status", "Published stage"], ["rollout", "Limited with stop rule"]], "The design discloses a nonpublic status or exposes a known weak slice without a gate.", "Support displays the published stage. The proposal limits rollout and records the failed slice."),
+    debrief: "Begin with the binding service problem, calculate cost per resolved case, and establish data, authority and evaluation boundaries with the responsible owners.", objectives: ["1.1", "1.3", "1.6", "6.1", "6.2"],
+  },
+  "professional-eval-gate": {
+    station: "Evaluation and reviewer board", view: "operations",
+    opening: "Handle time went down. The pilot is also failing more appeals and a new office is using a different attachment form.",
+    task: "Build the release gate under eighty reviewer minutes. Assign coverage where the known errors appear.",
+    references: [["Labeled examples", "Appeals failed despite faster handling. The new layout needs 6 outcome reviews. Small organizations need 8 exclusion reviews."], ["Review desk", "Two minutes per reviewed case. The grounding and handoff set requires 24 calibrated reviews; exact fields can be checked automatically."], ["Promotion rules", "Separate escalation accuracy from overall speed. Eligible canary traffic may be randomized."]],
+    fields: [q("layout", "New-layout reviews", 0, 0, 30, "cases"), q("equity", "Small-organization reviews", 0, 0, 30, "cases"), f("grade", "Grounding and handoff", "Exact match", "Exact match", "Calibrated review"), f("canary", "Canary assignments", "Fastest office", "Fastest office", "Random eligible"), f("gate", "Escalation errors", "Aggregate speed", "Aggregate speed", "Separate stop rule")],
+    cases: [r("Coverage and capacity", "Appeals, new layouts and low-volume groups can disappear in averages.", [["layout", "atLeast", 6], ["equity", "atLeast", 8], ["grade", "Calibrated review"]], "At least one known failure class lacks review.", "The gate includes the layout and inclusion checks, plus grounded handoff review."),
+      r("Canary cohort", "Current and candidate need comparable eligible requests.", [["canary", "Random eligible"]], "Selection by office can confound the comparison.", "Current and candidate receive comparable randomized traffic.")],
+    retest: r("Appeals regress while overall handling speeds up", "Escalation accuracy crosses the permissible bound.", [["gate", "Separate stop rule"], ["grade", "Calibrated review"]], "Aggregate performance can mask and release the regression.", "Promotion stops on escalation quality. The aggregate improvement remains available for diagnosis."),
+    debrief: "Use grading methods that match the evidence. Evaluate release decisions by affected slices and test canaries with comparable allocation and independent stop criteria.", objectives: ["4.1", "4.2", "4.3", "4.6", "5.5"],
+    capacity: { label: "Reviewer minutes", unit: "min", limit: 80, terms: [["layout", 2], ["equity", 2], ["grade", [24, 48]]] },
+  },
+  "market-scale": {
+    station: "Context and cost bench", view: "operations",
+    opening: "Requests got more expensive after vendor IDs moved in front of the policy. A genuine policy waiver also comes back as a missing document.",
+    task: "Reorder the request, preserve the verified case state and set up a matched cost run.",
+    references: [["Candidate runs", "A: 95%, $0.01, 1.6 s p95. B: 98%, $0.04, 2.8 s. Targets: 94%, $0.02, under 2 s."], ["Prompt diff", "Stable policy and rubric are shared. Vendor ID and active records vary by request."], ["Case set", "Case 15 has a signed waiver. Case 16 is missing a mandatory field. Usage logs include cache reads and creation tokens."]],
+    fields: [f("model", "Pilot route", "B", "B", "A"), f("prefix", "Before the cache breakpoint", "Vendor ID", "Vendor ID", "Policy + rubric"), f("active", "Load into the working request", "Full transcript", "Full transcript", "Verified active records"), f("example", "Holdout examples", "Clear only", "Clear only", "Waived + missing"), f("counter", "Compare on matched requests", "Average time", "Average time", "Read + creation tokens")],
+    cases: [r("Operating envelope", "Cost, quality and tail-latency limits apply together.", [["model", "A"]], "The pilot exceeds the measured cost or latency ceiling.", "Candidate A meets the measured requirements."),
+      r("Vendor request changes", "The new request has a different vendor ID and the same policy.", [["prefix", "Policy + rubric"], ["active", "Verified active records"], ["counter", "Read + creation tokens"]], "The shared prefix fragments, stale facts carry over or the test obscures reuse.", "The common policy leads both requests. Only the active evidence changes. The comparison reports cache use.")],
+    retest: r("Signed waiver with a blank field", "The waiver and ordinary missing-field cases have the same blank shape.", [["example", "Waived + missing"], ["active", "Verified active records"]], "The trial conflates a verified waiver with missing evidence.", "The waiver reference survives context assembly and the matched cases receive distinct outcomes."),
+    debrief: "Meet all operating targets, isolate the variable in matched tests, and build context around a stable shared prefix and verified active evidence.", objectives: ["2.1", "2.3", "2.4", "2.5", "4.5"],
+  },
+  "tenant-tools": {
+    station: "Service identity matrix", view: "operations",
+    opening: "Three assistants need one shared lookup. Triage can currently see irrelevant customer capabilities.",
+    task: "Configure which records and tool families each request may reach. Replay the settings on separate tenant fixtures.",
+    references: [["Triage contract", "Four status/read capabilities. No payroll, no updates."], ["Verified scope card", "Tenant scope comes from the signed-in identity and is enforced in search."], ["Operations map", "The nightly CSV transfer already has a stable bulk API. The permissioned lookup is shared across clients."]],
+    fields: [f("catalog", "Triage sees", "All 40", "All 40", "Required reads"), f("scope", "Derive tenant from", "Browser input", "Browser input", "Verified identity", "Last request in the shared service"), f("filter", "Filter record access at", "Model prompt", "Model prompt", "Search service"), f("batch", "Nightly transfer uses", "Agent", "Agent", "Existing bulk API"), f("discover", "Discover capabilities by", "Everything", "Everything", "Task and verified scope")],
+    cases: [r("Authorized tenant read", "The tenant has one requested case and an unrelated update capability.", [["catalog", "Required reads"], ["scope", "Verified identity"], ["filter", "Search service"]], "More records or capabilities reach the assistant than triage needs.", "The requested authorized status returns. The execution boundary admits only scoped records."),
+      r("Nightly transfer", "The job has a fixed input and no model interpretation.", [["batch", "Existing bulk API"]], "The established bulk procedure now depends on an agent turn.", "Bulk transfer stays on its deterministic interface.")],
+    retest: r("A second assistant asks for a distinct capability family", "Only capabilities in the verified scope are permitted for discovery.", [["discover", "Task and verified scope"], ["filter", "Search service"]], "Capability discovery leaks unrelated tools or relies on filtering returned content later.", "Each client sees only the authorized capabilities relevant to the request."),
+    debrief: "Derive tenant scope from trusted identity and enforce it before retrieval. Align discovery and execution permissions, and retain deterministic interfaces when they fit the workload.", objectives: ["3.1", "3.2", "3.7", "3.8"],
+  },
+  "community-controls": {
+    station: "Approval and data-flow desk", view: "operations",
+    opening: "The staff draft is useful. A previous change issued a different amount from the one approved, and the case text stayed in diagnostics.",
+    task: "Set controls where evidence crosses boundaries. Test a changed amount and trace where the case is retained.",
+    references: [["Approval ledger", "A sensitive change needs two operators and approval for its exact version and amount."], ["Retention map", "Source database, provider state and diagnostic store have independent controls. Raw case text is prohibited in diagnostics."], ["Lookup result", "A successful empty result differs from the service being unavailable. Attachments provide evidence only."]],
+    fields: [f("input", "Third-party attachment role", "Policy", "Policy", "Evidence"), q("approvals", "Sensitive write minimum", 1, 0, 4, "operators"), f("bind", "Approval applies to", "Session", "Session", "Exact version + amount"), f("log", "Diagnostics carry", "Full case", "Full case", "Status + trace ID"), f("copies", "Check deletion in", "Database only", "Database only", "All three stores"), f("outage", "Supplier outage reply", "No capacity", "No capacity", "Unavailable")],
+    cases: [r("Changed amount after approval", "A signed approval exists for the old amount only.", [["input", "Evidence"], ["approvals", "atLeast", 2], ["bind", "Exact version + amount"]], "A stale or insufficient approval could authorize a different write.", "The write stays on hold for authorization matching the new amount."),
+      r("Retention inspection", "The input can survive in several stores after a deletion request.", [["log", "Status + trace ID"], ["copies", "All three stores"]], "A diagnostic or provider copy remains outside the control map.", "Diagnostics hold metadata. Each retained surface has a deletion check.")],
+    retest: r("Provider outage during a follow-up", "An unavailable search supplies no capacity evidence.", [["outage", "Unavailable"], ["log", "Status + trace ID"]], "The resident gets an unsupported answer or sensitive data travels to diagnostics.", "The response preserves uncertainty while the incident trace stays correlated."),
+    debrief: "Verify approval against the exact action at execution. Define separate data and retention boundaries and carry an explicit unavailable state into the caller workflow.", objectives: ["2.2", "5.1", "5.2", "5.3", "5.4"],
+  },
+  "regional-operations": {
+    station: "Incident control room", view: "operations",
+    opening: "The write queue is stuck. Reads still work. On-call has ten minutes to get residents onto a staffed route.",
+    task: "Run a tabletop handoff. Pick the first actions, record the evidence and hand the next operator a reproducible recovery plan.",
+    references: [["Incident clock", "Page on-call: 1 min. Open staffed queue: 3 min. Compare the failing write with the previous release: 2 min. Full dashboard export: 7 min."], ["Trace W-19", "Read allowed; write denied for one worker after deploy. The effective identity and permitted scope changed."], ["Handoff standard", "Name the owner, deployment version and failure fixture. Keep claims attached to source IDs and disclose unresolved gaps."], ["Restart and review", "The importer completed validation before the outage. Resume from that checkpoint. The teams share a review procedure. Production permissions are enforced centrally. The same contract finding appeared twice with different wording."]],
+    fields: [f("page", "First contact", "Post dashboard", "Post dashboard", "Page on-call"), f("queue", "Resident requests", "Wait for deploy", "Wait for deploy", "Open staffed queue"), f("investigate", "First diagnosis", "Export dashboard", "Export dashboard", "Compare identity + scope"), f("packet", "Handoff includes", "Screenshots", "Screenshots", "Version + fixture + owner"), f("source", "Specialist evidence", "Confidence totals", "Confidence totals", "Cited claims + gaps"), f("resume", "Restart import from", "Beginning", "Beginning", "Completed validation"), f("extension", "Publish the review procedure as", "Permission override", "Permission override", "Shared Skill"), f("issue", "Merge findings by", "Wording", "Wording", "Contract + evidence")],
+    cases: [r("First ten minutes", "Residents need manual service while the write path is unavailable.", [["page", "Page on-call"], ["queue", "Open staffed queue"], ["investigate", "Compare identity + scope"]], "The queue remains unstaffed, the owner is missing or diagnosis starts with the wrong evidence.", "On-call is paged, the manual queue is staffed and the failing identity is isolated.") ,
+      r("Permission regression", "The write denial occurs after deployment while reads still work.", [["investigate", "Compare identity + scope"], ["packet", "Version + fixture + owner"]], "The next operator cannot reproduce the regression from the handoff.", "The versioned failure fixture and effective identity go to the named owner.")],
+    retest: r("Next shift resumes the import and review", "One collection was unavailable. A duplicated contract finding arrives with different wording.", [["source", "Cited claims + gaps"], ["packet", "Version + fixture + owner"], ["resume", "Completed validation"], ["extension", "Shared Skill"], ["issue", "Contract + evidence"]], "The handoff drops evidence or forces the next shift to redo completed work and publish duplicate findings.", "The next shift resumes from validation, loads the review procedure under existing permissions and keeps one source-linked contract finding."),
+    output: ({ page, queue, investigate, packet, source }) => [
+      ["Incident actions", `1. ${page}\n2. ${queue}\n3. ${investigate}`],
+      ["Handoff draft", `${packet === "Version + fixture + owner" ? "Owner: shift on-call\nDeployment: r17 · Fixture: W-19" : "Attachment: dashboard screenshots"}\n${source === "Cited claims + gaps" ? "Evidence: W-19 confirms writes denied. The second collection is unverified." : "Evidence: combined specialist confidence."}`],
+    ],
+    debrief: "An actionable handoff names the owner, exact deployment and repeatable failure. Preserve validated checkpoints and versioned procedures. Diagnose authorization by effective scope, and identify duplicate findings by their contract and evidence.", objectives: ["1.2", "1.4", "1.5", "6.4", "6.5", "7.1", "7.2", "7.3"],
+    capacity: { label: "Incident clock", unit: "min", limit: 10, terms: [["page", [5, 1]], ["queue", [8, 3]], ["investigate", [7, 2]]] },
+  },
+} satisfies Record<string, Casework>;

@@ -3,10 +3,12 @@
 import { Camera, Crosshair, MessageCircle, Minus, Plus, RotateCw } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SceneKind, WorldControls } from "../lib/scene/renderer";
+import type { MissionRoomReplay, SceneKind, WorldControls } from "../lib/scene/renderer";
 import { defaultDistrict } from "../lib/scene/districts";
 import type { DistrictId } from "../lib/scene/districts";
 import type { MissionRoom } from "../lib/scene/mission-interior";
+import { recordClientHealth } from "../lib/client-health";
+import { useAccount } from "./account";
 
 type Marker<T extends string> = {
   id: T;
@@ -25,6 +27,7 @@ type SceneProps<T extends string> = {
   panelOpen?: boolean;
   staffHours?: number;
   assignmentComplete?: boolean;
+  roomReplay?: { replay: MissionRoomReplay; preview: HTMLCanvasElement | null } | null;
   description: string;
   markers: readonly Marker<T>[];
   selected: T | null;
@@ -35,8 +38,9 @@ type SceneProps<T extends string> = {
 };
 
 export function WorldScene<T extends string>({
-  kind, missionRoom, district = defaultDistrict, districtVisit = 0, panelOpen = false, staffHours = 16, assignmentComplete = false, description, markers, selected, onSelect, onTalk, conversationMarker, assignmentStatuses,
+  kind, missionRoom, district = defaultDistrict, districtVisit = 0, panelOpen = false, staffHours = 16, assignmentComplete = false, roomReplay, description, markers, selected, onSelect, onTalk, conversationMarker, assignmentStatuses,
 }: SceneProps<T>) {
+  const { user } = useAccount();
   const host = useRef<HTMLDivElement>(null);
   const elements = useRef(new Map<string, HTMLButtonElement>());
   const world = useRef<WorldControls>(null);
@@ -45,8 +49,10 @@ export function WorldScene<T extends string>({
   const districtVisitRef = useRef(districtVisit);
   const hoursRef = useRef(staffHours);
   const completionRef = useRef(assignmentComplete);
+  const replayRef = useRef(roomReplay);
   const selectCallback = useRef(onSelect);
   const talkCallback = useRef(onTalk);
+  const healthUser = useRef(user?.id);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
   const conversationId = conversationMarker?.id;
   const setConversationMarker = useCallback((element: HTMLButtonElement | null) => {
@@ -73,6 +79,10 @@ export function WorldScene<T extends string>({
   }, [onSelect, onTalk]);
 
   useEffect(() => {
+    healthUser.current = user?.id;
+  }, [user?.id]);
+
+  useEffect(() => {
     world.current?.refreshMarkers();
   }, [panelOpen, assignmentStatuses, conversationId, state]);
 
@@ -87,8 +97,26 @@ export function WorldScene<T extends string>({
   }, [assignmentComplete]);
 
   useEffect(() => {
+    replayRef.current = roomReplay;
+    world.current?.setMissionReplay(roomReplay?.replay ?? null, roomReplay?.preview);
+  }, [roomReplay]);
+
+  useEffect(() => {
     const container = host.current;
     let disposed = false;
+    const startedAt = performance.now();
+    const surface = kind === "mission" ? "room" : kind === "depot" ? "dispatch" : "city";
+    let reportedReady = false;
+
+    function report(available: boolean) {
+      if (disposed) return;
+      setState(available ? "ready" : "unavailable");
+      if (healthUser.current && (!reportedReady || !available)) {
+        void recordClientHealth(healthUser.current, available ? "scene-ready" : "scene-fallback", surface,
+          reportedReady ? undefined : performance.now() - startedAt);
+      }
+      if (available) reportedReady = true;
+    }
 
     async function start() {
       try {
@@ -98,14 +126,15 @@ export function WorldScene<T extends string>({
           if (!elements.current.has(id)) return;
           if (action === "talk" && talkCallback.current) talkCallback.current(id as T);
           else selectCallback.current(id as T);
-        }, (available) => setState(available ? "ready" : "unavailable"), missionRoom);
+        }, report, missionRoom);
         world.current.select(selection.current);
         world.current.setWorkload(hoursRef.current);
         world.current.setAssignmentComplete(completionRef.current);
-        setState("ready");
+        if (replayRef.current) world.current.setMissionReplay(replayRef.current.replay, replayRef.current.preview);
+        report(true);
       } catch (error) {
         console.error("Unable to start the CertCity 3D scene.", error);
-        if (!disposed) setState("unavailable");
+        report(false);
       }
     }
 
@@ -164,7 +193,7 @@ export function WorldScene<T extends string>({
         </button>}
       </div>
       {state === "ready" && kind !== "mission" && (
-        <div className="camera-hud" data-olive-focus={kind === "city" && district === "downtown" || undefined}>
+        <div className="camera-hud">
           <span className="camera-hint">
             <span className="camera-hint-mouse">Drag to move · Scroll to zoom</span>
             <span className="camera-hint-touch">Drag to move · Pinch to zoom</span>

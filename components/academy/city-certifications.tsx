@@ -3,8 +3,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { places } from "../../lib/world";
-import { trackHref, tracks, trackTitle } from "../../lib/claude/blueprints";
-import { examGuideLabel } from "../../lib/claude/december-blueprints";
+import { trackPracticeHref, tracks, trackTitle } from "../../lib/claude/blueprints";
+import { decemberVersion, examGuideLabel } from "../../lib/claude/december-blueprints";
+import { readReadiness, readinessKey } from "../../lib/claude/readiness";
+import { objectiveCoverage } from "../../lib/claude/curriculum";
+import { guideCityHref } from "../../lib/claude/curriculum/city-guide";
+import { subscribeToProgress } from "../../lib/progress-storage";
 import type { Track } from "../../lib/claude/blueprints";
 import { missionMappings } from "../../lib/claude/missions";
 import type { Mission } from "../../lib/claude/missions";
@@ -41,12 +45,13 @@ export function CityCertificationDialog({ dialog, selected, onSelect }: {
   );
 }
 
-export function MissionJournal({ dialog, track, records, legacy, progress, requestedMission, dispatchDueAt, onMission, onStudy, onChangeTrack }: {
+export function MissionJournal({ dialog, track, records, legacy, progress, currentGuide = false, requestedMission, dispatchDueAt, onMission, onStudy, onChangeTrack }: {
   dialog: RefObject<HTMLDialogElement | null>;
   track: Track;
   records: PortfolioRecords;
   legacy: ReadonlySet<string>;
   progress: boolean;
+  currentGuide?: boolean;
   requestedMission?: string | null;
   onMission: (mission: Mission) => void;
   onStudy: (mission: Mission, page: "check" | "followup") => void;
@@ -54,6 +59,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, reque
   onChangeTrack: () => void;
 }) {
   const [now, setNow] = useState(0);
+  const [guidePracticed, setGuidePracticed] = useState<string[]>([]);
   useEffect(() => {
     const refresh = () => setNow(Date.now());
     refresh();
@@ -65,6 +71,12 @@ export function MissionJournal({ dialog, track, records, legacy, progress, reque
       window.removeEventListener("focus", refresh);
     };
   }, [dialog]);
+  useEffect(() => {
+    if (!currentGuide) return;
+    const refresh = () => setGuidePracticed(readReadiness(track)?.guide ?? []);
+    refresh();
+    return subscribeToProgress((key) => { if (key === readinessKey(track) || key === null) refresh(); });
+  }, [currentGuide, track]);
   useEffect(() => {
     const journal = dialog.current;
     if (!requestedMission || !journal) return;
@@ -122,11 +134,11 @@ export function MissionJournal({ dialog, track, records, legacy, progress, reque
         <button className="icon-button" type="button" aria-label={`Close ${heading.toLowerCase()}`} onClick={() => dialog.current?.close()}><X size={20} aria-hidden="true" /></button>
       </header>
       <div className="dialog-body mission-journal-body">
-        <p>{trackTitle(track)} · {examGuideLabel(track)}</p>
+        <p>{trackTitle(track)} · {examGuideLabel(track, currentGuide ? decemberVersion : undefined)}</p>
         <div className="mission-progress-summary">
           <div><strong>{completed.length}/{evidence.missions.length}</strong><span>Assignments saved</span></div>
-          <div><strong>{evidence.applied.size}/{total}</strong><span>Objectives applied in the city</span></div>
-          <div><strong>{evidence.demonstrated.size}/{total}</strong><span>Objectives answered correctly on a first-seen exam check</span></div>
+          <div><strong>{evidence.applied.size}/{total}</strong><span>{currentGuide ? "July objectives applied in the city" : "Objectives applied in the city"}</span></div>
+          <div><strong>{evidence.demonstrated.size}/{total}</strong><span>{currentGuide ? "July first-seen objectives answered correctly" : "Objectives answered correctly on a first-seen exam check"}</span></div>
         </div>
         {!!schedule.length && <details className="academy-domain mission-review-schedule" open={schedule[0].due <= now}>
           <summary><span><strong>Scheduled follow-ups</strong><small>
@@ -140,6 +152,16 @@ export function MissionJournal({ dialog, track, records, legacy, progress, reque
           </ul>
         </details>}
         {progress ? <>
+          {currentGuide && <section className="city-guide-progress" aria-labelledby="city-guide-progress-title">
+            <h3 id="city-guide-progress-title">Current guide practice</h3>
+            {objectiveCoverage(track, decemberVersion).map(({ id, title, skills }) => <details className="academy-domain" key={id}>
+              <summary><span><strong>{title}</strong><small>{skills.filter(({ id }) => guidePracticed.includes(id)).length}/{skills.length} practiced</small></span></summary>
+              <ul className="academy-objectives">{skills.map(({ id, title, missions }) => <li key={id}>
+                <span>{title}</span>{missions[0] && <a href={guideCityHref(track.id, missions[0].id, id)}>City practice</a>}
+              </li>)}</ul>
+            </details>)}
+            <h3>July city records</h3>
+          </section>}
           {evidence.domains.map((domain) => (
             <details className="academy-domain" key={domain.id}>
               <summary><span><strong>{domain.title}</strong><small>{domain.objectives.filter((_, i) => evidence.applied.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} applied in the city · {domain.objectives.filter((_, i) => evidence.demonstrated.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} correct on first-seen checks
@@ -164,7 +186,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, reque
         </>}
         <div className="conversation-actions">
           <button type="button" className="button button-outline" onClick={onChangeTrack}>Switch certification</button>
-          <Link className="button button-outline city-study-link" href={trackHref(track)}>Exam practice and guide <ArrowRight size={16} aria-hidden="true" /></Link>
+          <Link className="button button-outline city-study-link" href={trackPracticeHref(track)} prefetch={false}>Exam practice and guide <ArrowRight size={16} aria-hidden="true" /></Link>
         </div>
       </div>
     </dialog>

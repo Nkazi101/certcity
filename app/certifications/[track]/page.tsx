@@ -1,29 +1,46 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AcademyHeader } from "../../../components/academy/chrome";
-import { TrackWorkspace } from "../../../components/academy/workspace";
-import { tracks, trackTitle } from "../../../lib/claude/blueprints";
+import { PublicTrackGuide } from "../../../components/academy/public-track-guide";
+import { SeoBreadcrumbs } from "../../../components/academy/seo-breadcrumbs";
+import { TrackExperience } from "../../../components/academy/track-experience";
+import { trackHref, tracks, trackTitle } from "../../../lib/claude/blueprints";
+import { certificationCatalog, pageMetadata, siteName, trackDescriptions } from "../../../lib/seo";
 
 type Props = { params: Promise<{ track: string }> };
+
+export const dynamicParams = false;
 
 export function generateStaticParams() {
   return tracks.map(({ id }) => ({ track: id }));
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { track: id } = await params;
-  const track = tracks.find((entry) => entry.id === id);
-  return track ? { title: trackTitle(track) } : {};
-}
-
-export default async function TrackPage({ params }: Props) {
+async function findTrack({ params }: Props) {
   const { track: id } = await params;
   const track = tracks.find((entry) => entry.id === id);
   if (!track) notFound();
+  return track;
+}
+
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const track = await findTrack(props);
+  return pageMetadata({ path: trackHref(track), title: `${trackTitle(track)} Exam Practice`, description: trackDescriptions[track.id] });
+}
+
+export default async function TrackPage(props: Props) {
+  const track = await findTrack(props);
+  const breadcrumbs = [
+    { name: siteName, path: "/" },
+    { name: "Claude exam practice", path: certificationCatalog.path },
+    { name: `${track.role} ${track.level}`, path: trackHref(track) },
+  ];
+  const trail = <SeoBreadcrumbs entries={breadcrumbs} />;
   return (
     <div className="academy-shell">
       <AcademyHeader />
-      <TrackWorkspace key={track.id} track={track} />
+      <TrackExperience key={track.id} track={track} breadcrumbs={trail}>
+        <PublicTrackGuide track={track} breadcrumbs={trail} />
+      </TrackExperience>
     </div>
   );
 }

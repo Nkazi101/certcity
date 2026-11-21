@@ -63,13 +63,57 @@ function BudgetMeter({ label, value, limit, unit }: { label: string; value: numb
   </div>;
 }
 
+function PracticalChecks({ attempt }: { attempt: CapstoneAttempt }) {
+  return <ul>
+    {attempt.results.map(({ criterion, title, passed, detail, review }) => (
+      <li key={criterion} data-passed={passed}>
+        <p><strong>{title}</strong><span>{passed ? "Met" : "Needs revision"}</span></p>
+        <p>{detail}</p>
+        {!passed && <p>{review}</p>}
+      </li>
+    ))}
+  </ul>;
+}
+
+function SavedPractical({ attempt }: { attempt: CapstoneAttempt }) {
+  const [expanded, setExpanded] = useState(false);
+  const { snapshot, artifact, stage, submittedAt, passed } = attempt;
+  const title = snapshot?.title ?? (stage === "capstone" ? "Capstone" : "Delayed case");
+  const fields = snapshot?.fields ?? Object.keys(artifact).map((id) => ({ id, label: id }));
+  const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(submittedAt);
+  return <details onToggle={(event) => setExpanded(event.currentTarget.open)}>
+    <summary><strong>{title}</strong><span>{date} · {passed ? "Checks met" : "Needs revision"}</span></summary>
+    {expanded && <section className={styles.results}>
+      {snapshot ? <><p>{snapshot.brief}</p><p>{snapshot.deliverable}</p>
+        <details className={styles.archivedRecords}>
+          <summary>Case records as delivered</summary>
+          {snapshot.documents.map(({ id, title, text, format }) => <details key={id}>
+            <summary>{title} · {id}</summary>
+            {format === "json" ? <pre className={styles.recordCode} tabIndex={0}>{text}</pre> : <p>{text}</p>}
+          </details>)}
+        </details></> : <p>This earlier submission saved your work and checks. The original case records were unavailable when it was saved.</p>}
+      <h4>Submitted work</h4>
+      <dl className={styles.archivedArtifact}>
+        {fields.map(({ id, label }) => <div key={id}><dt>{label}</dt><dd>{artifact[id] || "—"}</dd></div>)}
+      </dl>
+      <h4>Checks at submission</h4>
+      <PracticalChecks attempt={attempt} />
+      {snapshot && <ExternalLink href={snapshot.reference.url}>{snapshot.reference.label}</ExternalLink>}
+    </section>}
+  </details>;
+}
+
 function previousAttempt(attempts: readonly CapstoneAttempt[], definition: CapstoneDefinition, version: ExamVersion) {
   return attempts.filter(({ scenarioId, version: attemptVersion }) => scenarioId === definition.id && attemptVersion === version)
     .reduce<CapstoneAttempt | undefined>((latest, candidate) => !latest || candidate.submittedAt >= latest.submittedAt ? candidate : latest, undefined);
 }
 
 function loadDraft(key: string, definition: CapstoneDefinition, latest?: CapstoneAttempt) {
-  const base = latest?.artifact ?? initialCapstoneDraft(definition);
+  const base = initialCapstoneDraft(definition);
+  for (const { id } of definition.fields) {
+    const previous = latest?.artifact[id];
+    if (typeof previous === "string") base[id] = previous;
+  }
   try {
     const saved: unknown = JSON.parse(window.sessionStorage.getItem(key) ?? "null");
     if (saved && typeof saved === "object") {
@@ -240,16 +284,10 @@ function CapstoneEditor({ track, version, definition, attempts, onSubmit, onExit
         <section className={styles.results}>
           <h4 ref={resultsHeading} tabIndex={-1}>{result.passed ? "All practical checks met" : "Review the practical checks"}</h4>
           <p>{result.results.filter(({ passed }) => passed).length} of {result.results.length} checks met on the last submission.</p>
-          <ul>
-            {result.results.map(({ criterion, title, passed, detail, review }) => (
-              <li key={criterion} data-passed={passed}>
-                <p><strong>{title}</strong><span>{passed ? "Met" : "Needs revision"}</span></p>
-                <p>{detail}</p>
-                {!passed && <p>{review}</p>}
-              </li>
-            ))}
-          </ul>
-          <ExternalLink href={definition.reference.url}>{definition.reference.label}</ExternalLink>
+          <PracticalChecks attempt={result} />
+          <ExternalLink href={(result.snapshot?.reference ?? definition.reference).url}>
+            {(result.snapshot?.reference ?? definition.reference).label}
+          </ExternalLink>
         </section>
       )}
     </div>
@@ -266,6 +304,8 @@ export function CapstoneWorkspace({ track, version, attempts, onSubmit }: {
   const [now, setNow] = useState(Date.now);
   const heading = useRef<HTMLHeadingElement>(null);
   const evidence = capstoneEvidence(track.id, version, attempts, now);
+  const history = attempts.filter((entry) => entry.trackId === track.id && entry.version === version)
+    .sort((left, right) => right.submittedAt - left.submittedAt);
   const transferAvailable = evidence.transferDue !== null && now >= evidence.transferDue;
   const definition = stage ? getCapstoneDefinition(track.id, version, stage) : null;
 
@@ -318,6 +358,10 @@ export function CapstoneWorkspace({ track, version, attempts, onSubmit }: {
           </section>
         </div>}
       {evidence.capstone && evidence.transfer && <p className={styles.complete}><CheckCircle2 size={16} aria-hidden="true" /> Both practicals complete</p>}
+      {!!history.length && <details className={`${styles.editor} ${styles.history}`} data-track={track.id}>
+        <summary>Practical submission history <span>{history.length} saved</span></summary>
+        {history.map((attempt) => <SavedPractical key={attempt.id} attempt={attempt} />)}
+      </details>}
     </section>
   );
 }

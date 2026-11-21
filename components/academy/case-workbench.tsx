@@ -4,10 +4,14 @@ import type { ReactNode } from "react";
 import type { CaseDraft, CaseValue, Casework } from "../../lib/claude/casework";
 import { caseCapacity, caseworkPassed, replayCasework, startingCase } from "../../lib/claude/casework";
 import { workLayout } from "../../lib/claude/cases/layouts";
+import { workstationBrief } from "../../lib/claude/cases/presentation";
+import type { WorkstationBrief } from "../../lib/claude/cases/presentation";
 import type { Mission } from "../../lib/claude/missions";
 import { saveCityCasework } from "../../lib/claude/pathway";
 import type { MissionRecord } from "../../lib/claude/pathway";
+import type { MissionRoomReplay } from "../../lib/scene/renderer";
 import { CaseSurface } from "./case-surface";
+import styles from "./station-workbench.module.css";
 
 const appearance = {
   document: { Icon: FileText, inputs: "On the desk", edit: "Working draft", run: "Preview the work" },
@@ -15,6 +19,32 @@ const appearance = {
   flow: { Icon: Workflow, inputs: "Incoming work", edit: "Change the routes", run: "Replay the work" },
   operations: { Icon: Gauge, inputs: "Reports and limits", edit: "Set the operating plan", run: "Simulate the plan" },
 } as const;
+
+const roomReplayLabels = {
+  "market-bulletin": "Market bulletin desk",
+  "supplier-invoices": "Receiving station",
+  "regional-operations": "Incident queue desk",
+} as const;
+
+function roomReplay(mission: string, draft: CaseDraft, run: ReturnType<typeof replayCasework>, stage: "sample" | "new-case"): MissionRoomReplay | null {
+  const state = { token: performance.now(), result: run.passed ? "pass" as const : "review" as const, stage };
+  switch (mission) {
+    case "market-bulletin": {
+      const destination = stage === "sample" ? undefined : draft.send === "Inez’s desk" ? "approval" : draft.send === "Publish" ? "public" : "vendor";
+      return { ...state, kind: "bulletin", destination };
+    }
+    case "supplier-invoices": {
+      const routed = run.checks[stage === "sample" ? 1 : 0]?.passed;
+      return { ...state, kind: "receiving", disposition: routed ? "held" : "unresolved" };
+    }
+    case "regional-operations": {
+      const minutes = stage === "sample" ? run.capacity?.used : undefined;
+      const staffed = stage === "sample" ? !!run.checks[0]?.passed && minutes !== undefined && minutes <= (run.capacity?.limit ?? 0) : undefined;
+      return { ...state, kind: "operations", staffed, minutes };
+    }
+    default: return null;
+  }
+}
 
 function Artifacts({ output }: { output: ReturnType<typeof replayCasework>["output"] }) {
   return <div className="casework-artifacts">
@@ -41,7 +71,15 @@ function Replay({ result }: { result: ReturnType<typeof replayCasework> }) {
   </div>;
 }
 
-export function CaseWorkbench({ mission, exercise, record, speaker, onChange, onSaved, beforeClose, legacyReplay }: {
+export function WorkstationDirections({ brief, showProblem = false }: { brief: WorkstationBrief; showProblem?: boolean }) {
+  return <div className={`${styles.directions} ${showProblem ? styles.labDirections : ""}`}>
+    {showProblem && <p className={styles.problem}>{brief.problem}</p>}
+    <p><strong>Start here</strong> <span>{brief.move}</span></p>
+    <p><strong>Look for</strong> <span>{brief.ready}</span></p>
+  </div>;
+}
+
+export function CaseWorkbench({ mission, exercise, record, speaker, onChange, onSaved, beforeClose, legacyReplay, onRoomReplay }: {
   mission: Mission;
   exercise: Casework;
   record?: MissionRecord;
@@ -50,6 +88,7 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
   onSaved: () => void;
   beforeClose: (pending: Promise<unknown>) => void;
   legacyReplay?: ReactNode;
+  onRoomReplay: (replay: MissionRoomReplay, preview: HTMLCanvasElement) => void;
 }) {
   const [draft, setDraft] = useState<CaseDraft>(() => record?.caseDraft ?? record?.casework ?? startingCase(exercise));
   const [tested, setTested] = useState<CaseDraft | null>(() => !record?.caseDraft && record?.casework ? draft : null);
@@ -60,6 +99,7 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
   const pending = useRef<Promise<unknown>>(Promise.resolve());
   const output = useRef<HTMLHeadingElement>(null);
   const workbench = useRef<HTMLElement>(null);
+  const roomPreview = useRef<HTMLCanvasElement>(null);
   const focusAfterRun = useRef(false);
   const id = useId();
   const layout = workLayout(mission.id);
@@ -69,6 +109,15 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
   const result = tested && replayCasework(exercise, tested);
   const retest = testedAgain && replayCasework(exercise, testedAgain, true);
   const sampleCurrent = tested === draft;
+  const opening = <blockquote className="casework-opening">“{exercise.opening}” <cite>{speaker}</cite></blockquote>;
+  const roomLabel = roomReplayLabels[mission.id as keyof typeof roomReplayLabels];
+  const brief = workstationBrief(mission.id);
+
+  function replayInRoom(stage: "sample" | "new-case") {
+    if (!roomPreview.current) return;
+    const replay = roomReplay(mission.id, draft, replayCasework(exercise, draft, stage === "new-case"), stage);
+    if (replay) onRoomReplay(replay, roomPreview.current);
+  }
 
   function focusResult() {
     const response = workbench.current?.querySelector<HTMLElement>('.case-object-result[data-run="sample"][data-passed="false"]') ??
@@ -111,18 +160,19 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
     onSaved();
   }
 
-  return <section className="casework" data-workstyle={exercise.view} data-surface={layout.kind} aria-labelledby={id + "-title"}>
+  return <section className={`casework ${styles.workbench}`} data-workstyle={exercise.view} data-surface={layout.kind} aria-labelledby={id + "-title"}>
     <header className="casework-header">
       <span className="casework-icon"><Icon size={21} aria-hidden="true" /></span>
-      <div><h3 id={id + "-title"}>{exercise.station}</h3><p>{exercise.task}</p></div>
+      <div><h3 id={id + "-title"}>{exercise.station}</h3><p>{brief?.problem ?? exercise.task}</p></div>
     </header>
-    <blockquote className="casework-opening">“{exercise.opening}” <cite>{speaker}</cite></blockquote>
+    {brief && <WorkstationDirections brief={brief} />}
 
     <section className="casework-panel casework-controls" aria-label={edit} ref={workbench}>
-      {capacity && <Capacity value={capacity} />}
+      {capacity && layout.kind !== "incident" && <Capacity value={capacity} />}
       <CaseSurface missionId={mission.id} retestCurrent={testedAgain === draft} {...{ exercise, layout, draft, update, busy, baseline, result, retest, sampleCurrent }} />
-      <div className="casework-run-actions">
+      <div className={`casework-run-actions ${styles.runActions}`}>
         <button type="button" className="button button-primary" onClick={() => {
+          replayInRoom("sample");
           if (sampleCurrent) focusResult();
           else {
             focusAfterRun.current = true;
@@ -133,11 +183,20 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
           {result.passed && sampleCurrent ? "See results and new case" : "See all results"}
         </button>}
       </div>
+      {roomLabel && <figure className={styles.roomPreview} aria-hidden="true">
+        <canvas width={640} height={280} ref={roomPreview} />
+        <figcaption>{roomLabel} during replay</figcaption>
+      </figure>}
     </section>
     <details className="casework-file">
       <summary><ClipboardList size={17} aria-hidden="true" />{inputs} · complete case file</summary>
       <dl>{exercise.references.map(([name, content]) => <div key={name}><dt>{name}</dt><dd>{content}</dd></div>)}</dl>
       <details className="casework-before"><summary>Replay the starting setup</summary><Replay result={baseline} /></details>
+    </details>
+    <details className={styles.stationContext}>
+      <summary>{speaker}’s briefing</summary>
+      {opening}
+      <p>{exercise.task}</p>
     </details>
 
     {result && <section className="casework-results" aria-label="Replay results">
@@ -148,7 +207,10 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
         <h4>{exercise.retest.name}</h4>
         <p>{exercise.retest.evidence}</p>
         <button type="button" className="button button-outline" disabled={!sampleCurrent || !result.passed}
-          onClick={() => setTestedAgain(draft)}><Play size={15} aria-hidden="true" />Try the new case</button>
+          onClick={() => {
+            setTestedAgain(draft);
+            replayInRoom("new-case");
+          }}><Play size={15} aria-hidden="true" />Try the new case</button>
         {retest && <div role="status"><Replay result={retest} /></div>}
       </section> : <p role="status">Check the results with a warning, change the setup, and try the sample again.</p>}
       {sampleCurrent && result.passed && testedAgain === draft && retest?.passed && (saved

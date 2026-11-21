@@ -53,6 +53,21 @@ export type CapstoneDefinition = {
   reference: { label: string; url: string };
 };
 
+export type CapstoneSnapshot = {
+  schema: 1;
+  revision: string;
+  scoring: "fixture-v1";
+  receipt: string;
+  title: string;
+  role: string;
+  brief: string;
+  deliverable: string;
+  documents: CapstoneDefinition["documents"];
+  fields: CapstoneDefinition["fields"];
+  runs?: CapstoneDefinition["runs"];
+  reference: CapstoneDefinition["reference"];
+};
+
 export type CapstoneAttempt = {
   id: string;
   trackId: TrackId;
@@ -60,6 +75,7 @@ export type CapstoneAttempt = {
   stage: CapstoneStage;
   scenarioId: string;
   submittedAt: number;
+  snapshot?: CapstoneSnapshot;
   passed: boolean;
   artifact: CapstoneDraft;
   results: readonly {

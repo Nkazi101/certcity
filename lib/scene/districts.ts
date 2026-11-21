@@ -18,7 +18,7 @@ export function districtCamera(id: DistrictId, portrait = false) {
     ? { x: 42.0, y: 4.0, z: 3.2, angle: .07, pitch: .55, zoom: 1.02, width: 30 }
     : { x: 44.7, y: 5.7, z: 4.55, angle: -.62, pitch: .56, zoom: .94, width: 45 };
   if (id === "delmar") return portrait
-    ? { x: -111.2, y: 1.9, z: -44.5, angle: 2.59, pitch: .56, zoom: 1.00, width: 29 }
+    ? { x: -111.2, y: 2.28, z: -43.8, angle: 2.59, pitch: .55, zoom: 1.06, width: 27.5 }
     : { x: -116.0, y: 2.3, z: -44.3, angle: 2.57, pitch: .57, zoom: 1.12, width: 46 };
   if (id === "forest-park") return portrait
     ? { x: -80.4, y: 1.8, z: 12.0, angle: 3.06, pitch: .58, zoom: 1.0, width: 31.5 }

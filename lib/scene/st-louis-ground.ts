@@ -123,6 +123,16 @@ export function buildStLouisGround(kit: ModelKit, ground: THREE.Group, district:
       kit.box(stop, [x, .447, .423], [.7, .108, .415], kit.material("#ab7750"), true);
       kit.box(stop, [x, .208, .423], [.139, .385, .28], metal, true);
     }
+    const enamel = kit.material("#487674");
+    const glass = kit.material("#a1a892");
+    for (const x of [-.64, 1.80]) {
+      kit.box(stop, [x, 1.08, .68], [.082, 2.04, .079], metal, true);
+      kit.box(stop, [x, 2.07, .346], [.083, .078, .71], metal, true);
+    }
+    kit.box(stop, [.58, 2.14, .28], [2.56, .094, .91], enamel, true);
+    kit.box(stop, [.58, 2.118, -.18], [2.56, .140, .046], kit.material("#bfa471"), true);
+    kit.box(stop, [.58, 1.51, .69], [2.21, .85, .043], glass, true);
+    kit.box(stop, [.58, 1.12, .646], [2.33, .064, .062], metal, true);
     for (const [x,z] of [[-14,-16.5],[26,-19.6]]) lot(x,z,9.2,4.2);
     for (const [x,z] of [[-10.5,3.66],[.63,-3.82],[24.5,3.65]]) {
       const seat=kit.material("#a17550");
@@ -134,17 +144,23 @@ export function buildStLouisGround(kit: ModelKit, ground: THREE.Group, district:
       plant(x,x%2===0?-3.55:3.75,.62+rng()*.23,true);
       if (x!==2) plantedBed(kit,ground,x+1.07,3.61,1.03,50+x);
     }
+    for (const x of [-23.2, -13.6, .19, 14.51, 27.8]) lamp(kit, ground, x, x < 0 ? 4.37 : -3.98);
     for(const [i,x] of [-28,-21,-14,-6,2,9,16,23,29].entries()) {
       const z=25+rng()*.7;
       if (canBuild(x,z,5,5)) site(kit,ground,x,z,4.32+rng()*.65,4.78+rng()*.9,2.4+i%3*.53,
         ["#b88160","#b38670","#b69e82"][i%3],i%3===1?"flat":"gable");
       if(i%2===0) plant(x-1.8,30,.84);
+      if(i%3===1 && canBuild(x + 1.6, z - 3.91, 1.7, .85)) {
+        plantedBed(kit, ground, x + 1.6, z - 3.91, 1.70, 721 + i);
+        path([[x+.29,z-2.65],[x+.29,z-5.52]], .68);
+      }
     }
     for(const x of [-28,-19,-10,3,13,22,31]) plant(x,-16, .86+rng()*.5);
     for(const [i,x] of [-27,-20,-6,4,20,30].entries()) {
       const z=-22.5+rng();
       if (canBuild(x,z,5.25,5.25)) site(kit,ground,x,z,4.6+rng()*.65,4.9+rng()*.55,2.51+rng()*1.01,
         ["#bd8c68","#ac785f","#c0aa85"][i%3],i%3===0?"flat":"gable");
+      if (i % 2 === 0 && canBuild(x + 2.1, z + 4.22, 2.29, 1)) plantedBed(kit, ground, x + 2.1, z + 4.22, 2.29, 114 + i);
     }
     actors.push(
       {model:"trolley",path:[[-32,0],[33,0]],speed:2.2,phase:0},

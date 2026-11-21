@@ -16,11 +16,12 @@ export function AcademyHeader() {
   return (
     <header className="academy-header">
       <div className="academy-width academy-header-inner">
-        <Link className="academy-wordmark" href="/" aria-label="CertCity home">
+        <Link className="academy-wordmark" href="/" prefetch={false} aria-label="CertCity home">
           <img src="/brand/wordmark-primary.svg" width={2000} height={545} alt="" />
         </Link>
         <div className="academy-header-actions">
-          <Link className="academy-city-link" href="/"><ArrowLeft size={16} aria-hidden="true" /> Back to city</Link>
+          <Link className="academy-city-link" href="/" prefetch={false}><ArrowLeft size={16} aria-hidden="true" /> Back to city</Link>
+          <Link className="academy-city-link academy-help-link" href="/help">Study help</Link>
           <AccountButton />
         </div>
       </div>

@@ -1,0 +1,207 @@
+.workbench, .kitchenCounter { min-width: 0; }
+.shortBrief { display: none; }
+
+.directions {
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border-inline-start: 3px solid var(--desk-accent, #3d6854);
+  background: var(--desk-paper, #eeefdf);
+  color: var(--desk-ink, #284638);
+  font-size: .9rem;
+  line-height: 1.38;
+}
+.directions p { margin: 0; }
+.directions strong { margin-inline-end: 4px; }
+.directions .problem { font-weight: 720; }
+.labDirections {
+  width: min(100%, 1260px);
+  margin: 0 auto 9px;
+}
+.stationContext {
+  padding: 7px 11px;
+  border: 1px solid var(--desk-rule);
+  border-radius: 8px;
+  color: var(--desk-ink);
+}
+.stationContext > summary { min-height: 35px; padding-block: 7px; cursor: pointer; font-size: .85rem; font-weight: 720; }
+.stationContext > p { margin-bottom: 4px; line-height: 1.4; font-size: .88rem; }
+
+.roomPreview {
+  display: none;
+  width: min(100%, 38rem);
+  margin: 8px auto 0;
+  overflow: hidden;
+  border: 1px solid var(--desk-rule, #d8ceb3);
+  border-radius: 8px;
+  background: var(--desk-paper, #f3eddd);
+}
+.roomPreview:has(canvas[data-live="true"]) { display: block; }
+.roomPreview canvas { display: block; width: 100%; height: auto; }
+.roomPreview figcaption { padding: 4px 8px; color: var(--desk-ink, #364b3c); font-size: .8rem; }
+
+.workingObject, .workingControls, .receivingLedger, .invoiceSection {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.receivingLedger { gap: 12px; }
+.invoiceSection {
+  padding: 12px;
+  border: 1px solid #d8ceb3;
+  border-radius: 9px;
+  background: #fffbef;
+}
+.invoiceSection :global(.case-object-sources) > details {
+  color: #4d3b29;
+  background: #fdf4df;
+  border-color: #dbcca7;
+  border-inline-start-color: #aa8048;
+}
+.invoiceSection :global(.casework-number input) { width: min(100%, 9ch); }
+.incidentHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+.incidentHeader p {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 5px;
+  color: #e6f1e3;
+  background: #365b49;
+  font-size: .78rem;
+}
+.incidentHeader p[data-late="true"] { color: #ffefd5; background: #744739; }
+.incidentHeader strong { font-variant-numeric: tabular-nums; }
+.kitchenCounter :global(.kitchen-replay-stamp h4) { margin: 0; font-size: .96rem; }
+.kitchenCounter :global(.kitchen-replay-stamp .button) { justify-self: start; }
+.kitchenCounter :global(.kitchen-replay-stamp[data-warning="true"]) {
+  color: #5b3d25;
+  border-color: #cfa97d;
+  border-inline-start-color: #946235;
+  background: #f9efdf;
+}
+.kitchenCounter :global(h4[tabindex="-1"]) { scroll-margin-block: 62px 54px; }
+
+@container (min-width: 640px) {
+  .workingObject { grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); align-items: start; }
+  .firstEvidence, .remainingEvidence { grid-column: 1; }
+  .workingControls { grid-column: 2; grid-row: 1 / span 2; }
+}
+
+@media (max-width: 700px) {
+  :global(.conversation-dialog--station):has(.workbench, .labDirections) {
+    inset-block-start: max(114px, 17.5dvh);
+    padding: 8px;
+    scroll-padding-block: 64px 55px;
+  }
+  :global(.conversation-dialog--station):has(.workbench, .labDirections) :global(.conversation-top) {
+    top: -8px;
+    min-height: 53px;
+    margin: -8px -8px 6px;
+    padding: 5px 8px;
+  }
+  :global(.conversation-dialog--station):has(.workbench, .labDirections) :global(.conversation-top) > div > svg { display: none; }
+  :global(.conversation-dialog--station):has(.workbench, .labDirections) :global(.conversation-top) small {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .workbench { gap: 8px; padding: 5px 2px; }
+  .workbench :global(.casework-header) { gap: 8px; align-items: start; }
+  .workbench :global(.casework-header h3) { font-size: 1.16rem; line-height: 1.2; }
+  .workbench :global(.casework-header p) { margin-top: 3px; font-size: .89rem; line-height: 1.37; }
+  .workbench :global(.casework-icon) { width: 32px; height: 32px; border-radius: 7px; }
+  .workbench :global(.casework-icon svg) { width: 17px; height: 17px; }
+  .directions { padding: 6px 8px; font-size: .86rem; }
+  .stationContext > summary { min-height: 44px; padding-block: 11px; }
+  .fullBrief { display: none; }
+  .shortBrief {
+    display: block;
+    padding-inline: 9px;
+    border: 1px solid var(--desk-rule, #d8ceb3);
+    border-radius: 6px;
+    color: var(--desk-ink, #364b3c);
+    background: var(--desk-paper, #f3eddd);
+  }
+  .shortBrief > summary {
+    min-height: 44px;
+    padding-block: 11px;
+    cursor: pointer;
+    font-size: .85rem;
+    font-weight: 720;
+  }
+  .shortBrief > :global(.casework-opening) { margin-bottom: 9px; padding-block: 7px; font-size: .88rem; }
+  .workbench :global(.casework-panel) { padding: 7px; }
+  .workbench :global(.casework-controls label) { gap: 4px; }
+  .workbench :global(.casework-controls) :is(input, select) { min-height: 44px; font-size: 1rem; }
+  .workbench :global(.casework-route .button), .workbench :global(.case-object-sources summary) { min-height: 44px; }
+  .workbench :global(.case-link-row fieldset button) { min-height: 44px; }
+  .workbench :global(.case-object-sources) p { font-size: .88rem; }
+  .workbench :global(.case-folder-page), .workbench :global(.case-surface-card), .workbench :global(.case-command) { padding: 9px; }
+  .workbench :global(.case-object-result), .workbench :global(.casework-results h4) { scroll-margin-block: 61px 58px; }
+  .workbench :global(.case-folder) .folderTabs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 86px), 1fr));
+    gap: 5px;
+  }
+  .folderTabs button { min-height: 44px; padding: 5px; justify-content: center; text-align: center; }
+  .folderTabs button > svg:not(:global(.case-folder-result)) { display: none; }
+  .folderTabs button > :global(.case-folder-result) { margin: 0; }
+  .repeatTitle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .invoiceSection { padding: 9px; }
+  .workingObject, .workingControls { gap: 7px; }
+  .incidentHeader { margin-bottom: 7px; }
+  .incidentHeader p { padding: 4px 6px; }
+  .workbench :global(.case-command li) { grid-template-columns: 58px minmax(0, 1fr); gap: 8px; }
+  .workbench :global(.case-command time) { gap: 3px; font-size: .82rem; white-space: nowrap; }
+  .workbench :global(.case-command .casework-route > div) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workbench :global(.case-command .casework-route .button) { width: 100%; padding-inline: 4px; justify-content: center; text-align: center; }
+  .runActions {
+    position: sticky;
+    z-index: 1;
+    bottom: -8px;
+    align-items: center;
+    margin: 0 -7px -7px;
+    padding: 7px;
+    border-top: 1px solid var(--desk-rule);
+    border-radius: 0 0 11px 11px;
+    background: #f9f5e9;
+  }
+  .runActions > button { min-height: 44px; }
+  .labDirections + :global(.role-fieldwork) :is(:global(.fieldwork-tabs) button, :global(.fieldwork-chunk-head) button, select) { min-height: 44px; }
+  .kitchenCounter :global(.assignment-work-heading) { gap: 4px; margin: 3px 0 8px; }
+  .kitchenCounter :global(.assignment-work-heading h3) { font-size: 1.2rem; }
+  .kitchenCounter :global(.kitchen-desk) { gap: 7px; padding: 7px; }
+  .kitchenCounter :global(.kitchen-documents) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .kitchenCounter :global(.kitchen-documents button) { min-width: 0; padding: 4px 7px; font-size: .88rem; }
+  .kitchenCounter :global(.kitchen-paper), .kitchenCounter :global(.kitchen-binder) { min-height: 0; padding: 8px; }
+  .kitchenCounter :global(.kitchen-paper-header) { padding-bottom: 5px; }
+  .kitchenCounter :global(.kitchen-paper-header strong) { font-size: 1rem; }
+  .kitchenCounter :global(.kitchen-paper dl) { gap: 2px 13px; margin: 5px 0 2px; }
+  .kitchenCounter :global(.assignment-switch) { gap: 3px; margin-bottom: 6px; }
+  .kitchenCounter :global(.assignment-switch button), .kitchenCounter select { min-height: 44px; }
+  .kitchenCounter :global(.assignment-check-field) { min-height: 44px; }
+  .kitchenCounter .shortBrief { margin-top: 5px; padding: 0 7px; }
+  .kitchenCounter .shortBrief > :is(p, code) { margin-bottom: 8px; font-size: .88rem; }
+}
+
+@media (max-width: 700px) and (max-height: 500px) {
+  :global(.conversation-dialog--station):has(.workbench, .labDirections) { inset-block-start: 58px; }
+}

@@ -8,6 +8,7 @@ import { associateStudy } from "./associate";
 import { developerStudy } from "./developer";
 import { professionalStudy } from "./professional";
 import type { GuideActivity } from "./types";
+import { guideMissionId } from "./city-guide";
 
 const revisedStudy: Partial<Record<Track["id"], readonly GuideActivity[]>> = {
   "associate-foundations": associateStudy,
@@ -18,12 +19,14 @@ const revisedStudy: Partial<Record<Track["id"], readonly GuideActivity[]>> = {
 export function objectiveCoverage(track: Track, version: ExamVersion) {
   const revised = version === decemberVersion;
   const activities = new Map((revised ? revisedStudy[track.id] ?? [] : []).map((activity) => [activity[0], activity]));
-  const missions = revised ? [] : missionsFor(track.id).map((mission) => ({ mission, mappings: missionMappings(mission) }));
+  const missions = missionsFor(track.id).map((mission) => ({ mission, mappings: revised ? [] : missionMappings(mission) }));
   return rehearsalBlueprint(track, version).domains.map((domain) => ({
     ...domain,
     skills: domain.objectives.map((title, index) => {
       const id: PracticeItem["objective"] = `${domain.id}.${index + 1}`;
-      return { id, title, activity: activities.get(id), missions: missions.filter(({ mappings }) => mappings.some(({ objective }) => objective === id)).map(({ mission }) => mission) };
+      const mapped = revised ? guideMissionId(track.id, id) : undefined;
+      return { id, title, activity: activities.get(id), missions: missions.filter(({ mission, mappings }) =>
+        mapped ? mission.id === mapped : mappings.some(({ objective }) => objective === id)).map(({ mission }) => mission) };
     }),
   }));
 }

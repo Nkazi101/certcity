@@ -20,13 +20,15 @@ function billboardArtwork(image: HTMLImageElement, paper: string) {
   const height = image.height * scale;
   ctx.drawImage(image, (canvas.width - width) / 2, (logoHeight - height) / 2, width, height);
 
-  ctx.fillStyle = "#202622";
+  ctx.fillStyle = "#385049";
   ctx.fillRect(0, logoHeight, canvas.width, billboardHeight - logoHeight);
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 106px Arial, sans-serif";
+  ctx.fillStyle = "#d6b882";
+  ctx.fillRect(0, logoHeight, canvas.width, 8);
+  ctx.fillStyle = "#f7e6bc";
+  ctx.font = "bold 83px Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("click me", canvas.width / 2, (logoHeight + billboardHeight) / 2);
+  ctx.fillText("click me", canvas.width / 2, (logoHeight + billboardHeight) / 2 + 2);
   return canvas;
 }
 
@@ -67,6 +69,12 @@ export function addCitySigns(kit: ModelKit, scene: THREE.Scene, invalidate: () =
           }
           for (const y of [-height / 2 - .025, height / 2 + .025]) {
             kit.box(sign, [0, y, depth * .5], [width + .068, .035, .022], edge);
+          }
+        }
+        if (billboard) {
+          for (const x of [-width * .44, width * .44]) {
+            kit.box(sign, [x, height / 2 + trim * .49, depth / 2 + .02], [.12, .05, .062], edge, true);
+            kit.box(sign, [x, -height / 2 - trim * .49, depth / 2 + .02], [.12, .05, .062], edge, true);
           }
         }
 

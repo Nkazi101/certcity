@@ -9,6 +9,7 @@ import type {
   ArchiveWork, AssignmentWork, AssignmentWorkId, FileLocation, InvoiceRoute, InvoiceStatus, KitchenWork, PrintWork, SkillLocation,
 } from "../../lib/claude/assignment-work";
 import type { ReactNode } from "react";
+import styles from "./station-workbench.module.css";
 
 type WorkProps<T extends AssignmentWork> = {
   value: T;
@@ -63,14 +64,17 @@ const routeLabels: Record<InvoiceRoute, string> = {
 
 function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
   const [sourceId, setSourceId] = useState<string>("303");
-  const [panel, setPanel] = useState<"examples" | "ledger" | "exceptions">("examples");
+  const [panel, setPanel] = useState<"examples" | "ledger" | "exceptions">("ledger");
   const replay = useReplayHeading<KitchenWork>();
+  const batchSummary = useRef<HTMLHeadingElement>(null);
   const source = invoices.find(({ id }) => id === sourceId)!;
   const selected = value.examples.find(({ source }) => source === sourceId);
   const result = runKitchen(value);
   const batch = replay.run === value || actions.saved ? result : null;
   const current = result.rows.find(({ id }) => id === sourceId)!;
   const tested = batch?.rows.find(({ id }) => id === sourceId);
+  const postedMismatch = tested?.tray === "posted" && "printed" in source && Math.abs(source.printed - source.sum) > 0;
+  const preview = <><code>{current.extracted}</code><p>{current.reason}</p></>;
 
   function putExample(status: string) {
     const examples = value.examples.filter(({ source }) => source !== sourceId);
@@ -78,10 +82,9 @@ function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
     change({ ...value, examples });
   }
 
-  return <section className="assignment-work kitchen-counter" aria-labelledby="kitchen-work-title">
+  return <section className={`assignment-work kitchen-counter ${styles.kitchenCounter}`} aria-labelledby="kitchen-work-title">
     <header className="assignment-work-heading">
       <h3 id="kitchen-work-title">Receiving counter</h3>
-      <p>Keep questionable totals out of the ledger. Start with the two invoices the extractor mixes up.</p>
     </header>
     <div className="kitchen-desk">
       <div className="kitchen-documents" aria-label="Supplier invoices">
@@ -99,8 +102,13 @@ function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
           <dt>Line sum</dt><dd>{"sum" in source ? `${source.sum.toLocaleString("en-US")}¢` : source.id === "302" ? "Matches printed total" : "See supplier copy"}</dd>
         </dl>
         {source.id === "304" && <p>{source.description}</p>}
-        <div className="kitchen-output" aria-live="polite"><span>Extractor preview</span><code>{current.extracted}</code><p>{current.reason}</p></div>
-        {tested && <div className="kitchen-replay-stamp" data-posted={tested.tray === "posted"}><strong>{tested.tray === "posted" ? "Posted in this replay" : "Held in this replay"}</strong><p>{tested.reason}</p></div>}
+        <div className={`kitchen-output ${styles.fullBrief}`} aria-live="polite"><span>Extractor preview</span>{preview}</div>
+        <details className={`kitchen-output ${styles.shortBrief}`}><summary>Extractor preview</summary>{preview}</details>
+        {tested && <div className="kitchen-replay-stamp" data-posted={tested.tray === "posted"} data-warning={postedMismatch || undefined}>
+          <h4 tabIndex={-1} ref={replay.heading}>{postedMismatch ? "Mismatched total posted" : tested.tray === "posted" ? "Posted in this replay" : "Held in this replay"}</h4>
+          <p>{tested.reason}</p>
+          <button type="button" className="button button-text" onClick={() => batchSummary.current?.focus()}>See full batch</button>
+        </div>}
       </article>
       <div className="kitchen-binder">
         <nav className="assignment-switch" aria-label="Receiving controls">
@@ -126,8 +134,8 @@ function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
         </>}
         {panel === "ledger" && <>
           <h4>Before posting</h4>
-          <CheckField checked={value.typed} change={(typed) => change({ ...value, typed })}>Require integer cents or null</CheckField>
           <CheckField checked={value.reconcile} change={(reconcile) => change({ ...value, reconcile })}>Compare total with the trusted line sum</CheckField>
+          <CheckField checked={value.typed} change={(typed) => change({ ...value, typed })}>Require integer cents or null</CheckField>
           <div className="kitchen-output" aria-live="polite"><span>Fixture with amount text</span><p>{result.shape}</p></div>
         </>}
         {panel === "exceptions" && <>
@@ -144,7 +152,7 @@ function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
     <div className="kitchen-ledger">
       <button type="button" className="button button-primary" onClick={() => replay.replay(value)}><Play size={16} />Run receiving batch</button>
       {batch && <div aria-live="polite">
-        <h4 tabIndex={-1} ref={replay.heading}>{batch.posted} posted · {batch.held} held for review</h4>
+        <h4 tabIndex={-1} ref={batchSummary}>{batch.posted} posted · {batch.held} held for review</h4>
         <ul>{batch.rows.map((row) => <li key={row.id}><strong>{row.label}</strong><code>{row.extracted}</code><span>{row.tray === "posted" ? "Posted" : "Review"} · {row.reason}</span></li>)}
           <li><strong>Output contract</strong><span>{batch.shape}</span></li>
           <li><strong>Malformed date</strong><span>{batch.date.reason}</span></li>

@@ -1,10 +1,12 @@
 import { ArrowRight, Check, CircleAlert, Clock3, FileText, Gauge, GitPullRequestArrow, Mail, Shield, Terminal } from "lucide-react";
 import { useId, useState } from "react";
+import type { ReactNode } from "react";
 import type { CaseDraft, CaseField, CaseValue, Casework } from "../../lib/claude/casework";
 import { caseCapacity } from "../../lib/claude/casework";
 import type { replayCasework } from "../../lib/claude/casework";
 import type { WorkLayout, WorkSection } from "../../lib/claude/cases/layouts";
 import { sourcesForSection } from "../../lib/claude/cases/presentation";
+import styles from "./station-workbench.module.css";
 
 type Run = ReturnType<typeof replayCasework>;
 
@@ -110,13 +112,24 @@ export function CaseSurface({ missionId, exercise, layout, draft, busy, update, 
   const sampleSections = exercise.cases.map((fixture) => sections.findIndex(({ fields }) =>
     fields.includes(fixture.requirements[0]?.[0])));
 
-  function sources(index: number) {
+  function sources(index: number, placement?: "first" | "remaining") {
     const nearby = sourcesForSection(missionId, exercise, index);
-    return <div className="case-object-sources" key={index} aria-label="Source evidence">
-      {nearby.map(([name, facts], source) => <details key={name} open={source === 0}>
+    const displayed = placement === "first" ? nearby.slice(0, 1) : placement === "remaining" ? nearby.slice(1) : nearby;
+    if (!displayed.length) return null;
+    return <div className={`case-object-sources ${placement === "remaining" ? styles.remainingEvidence : styles.firstEvidence}`}
+      key={`${index}:${placement ?? "all"}`} aria-label={placement === "remaining" ? "More evidence" : "Source evidence"}>
+      {displayed.map(([name, facts], source) => <details key={name} open={placement !== "remaining" && source === 0}>
         <summary>{name}</summary>
         <p>{facts}</p>
       </details>)}
+    </div>;
+  }
+
+  function workingObject(index: number, controls: ReactNode) {
+    return <div className={styles.workingObject}>
+      {sources(index, "first")}
+      <div className={styles.workingControls}>{controls}</div>
+      {sources(index, "remaining")}
     </div>;
   }
 
@@ -145,8 +158,10 @@ export function CaseSurface({ missionId, exercise, layout, draft, busy, update, 
   }
 
   if (kind === "inbox" || kind === "desk" || kind === "console") {
+    const bulletin = missionId === "market-bulletin";
+    const controls = chosenSection.fields.map((id) => fieldControl(id, false, bulletin && id === "send"));
     return <div className="case-folder" data-folder={kind}>
-      <nav aria-label={kind === "inbox" ? "Messages" : kind === "console" ? "Test stations" : "Documents"}>
+      <nav className={styles.folderTabs} aria-label={kind === "inbox" ? "Messages" : kind === "console" ? "Test stations" : "Documents"}>
         {sections.map(({ title }, index) => {
           const checks = result?.checks.filter((_, checkIndex) => sampleSections[checkIndex] === index) ?? [];
           if (retest && retestSection === index) checks.push(...retest.checks);
@@ -161,22 +176,29 @@ export function CaseSurface({ missionId, exercise, layout, draft, busy, update, 
         })}
       </nav>
       <section id={panel} className="case-folder-page" aria-label={chosenSection.title}>
-        <h4>{chosenSection.title}</h4>
+        <h4 className={styles.repeatTitle}>{chosenSection.title}</h4>
         {kind === "inbox" && layout.arrivals?.[active] && <blockquote>
           {layout.arrivals[active].text}<cite>{layout.arrivals[active].label}</cite>
         </blockquote>}
-        <div className="case-folder-working">
-          {sources(active)}
-          <div className="case-folder-fields">{chosenSection.fields.map((id) => fieldControl(id, false, missionId === "market-bulletin" && id === "send"))}</div>
-        </div>
+        {workingObject(active, controls)}
+        {outcomes(active)}
         {kind === "inbox" && generated[0] ? <Paper title="Reply preview" content={generated[0][1].split("\n")[active] ?? ""} />
           : sectionPreview(chosenSection)}
-        {outcomes(active)}
       </section>
     </div>;
   }
 
   if (kind === "ledger" || kind === "matrix") {
+    if (missionId === "supplier-invoices") {
+      return <div className={styles.receivingLedger}>
+        {sections.map(({ title, fields: keys }, index) => <section className={styles.invoiceSection} key={title}>
+          <h4>{title}</h4>
+          {workingObject(index, keys.map((id) => fieldControl(id)))}
+          {outcomes(index)}
+          {index === 0 && generated[0] && <Paper title={generated[0][0]} content={generated[0][1]} />}
+        </section>)}
+      </div>;
+    }
     return <div className="case-sheets" data-sheet={kind}>
       {sections.map(({ title, fields: keys }, index) => <section className="case-ledger-page" key={title}>
         <h4>{title}</h4>
@@ -230,12 +252,13 @@ export function CaseSurface({ missionId, exercise, layout, draft, busy, update, 
     return <div className="case-trace">
       <section className="case-surface-card">
         <h4><GitPullRequestArrow size={18} aria-hidden="true" />{sections[0].title}</h4>
-        {sources(0)}
-        {layout.arrivals ? <LinkedResults {...{ exercise, layout, draft, busy, update }} />
-          : <ol className="case-trace-sequence">
+        {layout.arrivals ? workingObject(0, <LinkedResults {...{ exercise, layout, draft, busy, update }} />) : <>
+          {sources(0)}
+          <ol className="case-trace-sequence">
             <li>Request received</li><li>c42 · {draft.call}</li><li>{draft.connector}</li>
-          </ol>}
-        {!layout.arrivals && sections[0].fields.map((id) => fieldControl(id, false, true))}
+          </ol>
+          {sections[0].fields.map((id) => fieldControl(id, false, true))}
+        </>}
         {layout.arrivals && generated[0] && <details className="case-trace-preview">
           <summary>Inspect the linked message</summary><Paper title={generated[0][0]} content={generated[0][1]} />
         </details>}
@@ -249,9 +272,14 @@ export function CaseSurface({ missionId, exercise, layout, draft, busy, update, 
     let elapsed = 0;
     return <div className="case-incident">
       <section className="case-command">
-        <h4><Clock3 size={19} aria-hidden="true" />{sections[0].title}</h4>
-        <div className="case-command-working">
-          {sources(0)}
+        <header className={styles.incidentHeader}>
+          <h4><Clock3 size={19} aria-hidden="true" />{sections[0].title}</h4>
+          {capacity && <p aria-live="polite" data-late={capacity.used > capacity.limit}>
+            <strong>{capacity.used}/{capacity.limit}</strong> {capacity.unit}
+            {capacity.used > capacity.limit && <span> · Over limit</span>}
+          </p>}
+        </header>
+        {workingObject(0,
           <ol>{sections[0].fields.map((id) => {
             const time = capacity?.lengths.find((step) => step.id === id)?.units ?? 0;
             elapsed += time;
@@ -259,8 +287,8 @@ export function CaseSurface({ missionId, exercise, layout, draft, busy, update, 
               <time dateTime={`PT${elapsed}M`}>{elapsed} min{elapsed > (capacity?.limit ?? Infinity) && <CircleAlert size={14} aria-label="Over limit" />}</time>
               {fieldControl(id, false, true)}
             </li>;
-          })}</ol>
-        </div>
+          })}</ol>,
+        )}
         {outcomes(0)}
       </section>
       {sections.slice(1).map(({ title, fields: keys }, index) => <section className="case-surface-card" key={title}>

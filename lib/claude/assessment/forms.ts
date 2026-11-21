@@ -86,7 +86,12 @@ function buildAlternateForm(track: TrackId) {
   return arrangeRetest(candidates.filter(({ id }) => selected.has(id)));
 }
 
-const alternateForms = Object.fromEntries(tracks.map(({ id }) => [id, buildAlternateForm(id)])) as Record<TrackId, PracticeItem[]>;
+const alternateForms: Record<TrackId, PracticeItem[]> = {
+  "associate-foundations": buildAlternateForm("associate-foundations"),
+  "developer-foundations": buildAlternateForm("developer-foundations"),
+  "architect-foundations": buildAlternateForm("architect-foundations"),
+  "architect-professional": buildAlternateForm("architect-professional"),
+};
 
 export function rehearsalItems(track: TrackId, version?: ExamVersion, form: RehearsalForm = "original") {
   if (version === decemberVersion && track !== "architect-foundations") {

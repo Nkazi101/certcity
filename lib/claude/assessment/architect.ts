@@ -77,7 +77,7 @@ export const architectAssessment = [
     ["rail-proof", "5.6", "grounding", "A third-party record reports estimated weekly boardings and the internal source reports verified Monday validations. What is the sound synthesis?", "c", "Keep the units, methods and windows of the two measures distinct.",
       "Average the counts because both describe rail traffic.",
       "Choose the larger number as the safest volume estimate.",
-      "Keep both estimates identified by source, method and period.",
+      "Keep both figures identified by source, method and period.",
       "Use only the more detailed report and infer the other value from it."],
   ]),
   ...caseQuestions("Water district research room", "A coordinator routes public records research to a map worker, a permit worker, and a report editor. Workers have isolated contexts and different source access. The release has a coverage requirement, and the team uses a versioned evidence record for the final memo.", [

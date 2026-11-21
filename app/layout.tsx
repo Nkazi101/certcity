@@ -8,7 +8,7 @@ import "./certifications/academy.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://certcity.org"),
-  title: { default: "CertCity · City", template: "%s · CertCity" },
+  title: { default: "CertCity", template: "%s · CertCity" },
   applicationName: "CertCity",
   description: "Explore CertCity, solve problems for local organizations, and practice for professional certifications.",
   appleWebApp: { title: "CertCity" },

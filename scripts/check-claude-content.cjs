@@ -122,8 +122,20 @@ function checkRehearsals() {
           if (version === decemberVersion) assert.equal(coverage, blueprint.scores[index], title);
           else assert.ok(Math.abs(coverage - domain.weight * scored.length / 100) <= 1.1, `${title} domain ${domain.id} weighting`);
         }
+        const singleResponse = form.filter(({ correct }) => correct.length === 1);
+        // A copyediting check. Guessing by any one length rank should not clear even half the single-response items.
+        for (const width of [(answer) => answer.length, (answer) => answer.split(/\s+/).length]) {
+          const ranks = [0, 0, 0, 0];
+          for (const question of singleResponse) {
+            const lengths = question.options.map(([key, answer]) => ({ key, length: width(answer) }));
+            const correct = lengths.find(({ key }) => key === question.correct[0]).length;
+            const lower = lengths.filter(({ length }) => length < correct).length;
+            const ties = lengths.filter(({ length }) => length === correct).length;
+            for (let i = lower; i < lower + ties; i++) ranks[i] += 1 / ties;
+          }
+          assert.ok(Math.max(...ranks) <= singleResponse.length / 2, `${title} answer length cue`);
+        }
         if (label === "retest") {
-          const singleResponse = form.filter(({ correct }) => correct.length === 1);
           const keyCounts = ["a", "b", "c", "d"].map((key) => singleResponse.filter(({ correct }) => correct[0] === key).length);
           assert.ok(Math.max(...keyCounts) - Math.min(...keyCounts) <= 1, `${title} single-response positions`);
         }

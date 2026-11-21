@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { ArrowRight, Check, ChevronDown } from "lucide-react";
+import Link from "next/link";
 import { objectiveCoverage } from "../../lib/claude/curriculum";
+import { guideCityHref } from "../../lib/claude/curriculum/city-guide";
 import type { GuideActivity } from "../../lib/claude/curriculum/types";
 import type { Track } from "../../lib/claude/blueprints";
 import { decemberVersion } from "../../lib/claude/december-blueprints";
 import { sources } from "../../lib/claude/items";
-import { ExternalLink } from "./chrome";
+import { places } from "../../lib/world";
 
 const responseLabels: Record<Track["id"], string> = {
   "associate-foundations": "Desk outcome",
@@ -16,7 +18,7 @@ const responseLabels: Record<Track["id"], string> = {
   "architect-professional": "Operating consequence",
 };
 
-function GuideDecision({ track, activity, completed, onPractice, onAdvance }: {
+export function GuideDecision({ track, activity, completed, onPractice, onAdvance }: {
   track: Track; activity: GuideActivity; completed: boolean;
   onPractice: (objective: string) => Promise<boolean>; onAdvance?: () => void;
 }) {
@@ -27,7 +29,7 @@ function GuideDecision({ track, activity, completed, onPractice, onAdvance }: {
   const position = [...caseFile].reduce((hash, character) => Math.imul(hash ^ character.charCodeAt(0), 16777619), 2166136261);
   const correctFirst = position % 2 === 0;
   const choices = correctFirst ? [change, comparison] : [comparison, change];
-  const [label, href] = sources[source];
+  const [label] = sources[source];
   return <form className="academy-activity" onSubmit={async (event) => {
     event.preventDefault();
     if (!choice) return;
@@ -47,13 +49,16 @@ function GuideDecision({ track, activity, completed, onPractice, onAdvance }: {
         <strong>{responseLabels[track.id]}{result !== change && " · Needs revision"}</strong>
         <p>{result === change ? effect : initialConsequence}</p>
       </div>
-      <div className="academy-activity-notes"><p>{explanation}</p><ExternalLink href={href}>{label}</ExternalLink></div>
+      <div className="academy-activity-notes"><p>{explanation}</p><cite>{label}</cite></div>
       {result === change && onAdvance && <button className="academy-button text" type="button" onClick={onAdvance}>Next case <ArrowRight size={16} aria-hidden="true" /></button>}
     </>}
   </form>;
 }
 
-export function GuideSkills({ track, practiced, onPractice }: { track: Track; practiced: ReadonlySet<string>; onPractice: (objective: string) => Promise<boolean> }) {
+export function GuideSkills({ track, practiced, onPractice, onTarget }: {
+  track: Track; practiced: ReadonlySet<string>; onPractice: (objective: string) => Promise<boolean>;
+  onTarget: (domain: number, objective: string) => void;
+}) {
   const domains = objectiveCoverage(track, decemberVersion);
   const sequence = domains.flatMap(({ skills }) => skills);
   function advance(current: string, next: string) {
@@ -76,13 +81,18 @@ export function GuideSkills({ track, practiced, onPractice }: { track: Track; pr
         return <details className="academy-domain" id={`december-domain-${id}`} key={id}>
           <summary><span><strong>{title}</strong><small>{completed}/{skills.length} practiced</small></span><span className="academy-weight">{weight}%</span><ChevronDown size={17} aria-hidden="true" /></summary>
           <ol className="academy-skill-list">
-            {skills.map(({ id: objective, title: name, activity }) => {
+            {skills.map(({ id: objective, title: name, activity, missions }) => {
               const next = sequence[sequence.findIndex(({ id }) => id === objective) + 1];
               return <li key={objective}>
                 <details id={`guide-case-${objective}`} className="academy-guide-activity">
                   <summary><span>{name}</span>{practiced.has(objective) && <Check size={17} aria-label="Practiced" />}</summary>
                   {activity && <GuideDecision track={track} activity={activity} completed={practiced.has(objective)} onPractice={onPractice}
                     onAdvance={next && (() => advance(objective, next.id))} />}
+                  <div className="academy-skill-actions">
+                    {missions.map((mission) => <Link key={mission.id} className="academy-button secondary"
+                      href={guideCityHref(track.id, mission.id, objective)}>Practice at {places.find(({ id }) => id === mission.place)?.name ?? mission.title} <ArrowRight size={15} aria-hidden="true" /></Link>)}
+                    <button type="button" className="academy-button text" onClick={() => onTarget(id, objective)}>Try a different case</button>
+                  </div>
                 </details>
               </li>;
             })}

@@ -25,14 +25,22 @@ export type Track = {
 };
 
 export const blueprint = "2026-07.v1";
-export const blueprintLabel = "Exam guide v1.0 · July 2026";
+export const blueprintLabel = "Exam guide v1.1 · Before December 7, 2026";
 export const architectFoundationsLabel = "Exam guide v1.1 · November 2026";
 export const partnerCatalog = "https://anthropic-partners.skilljar.com/page/partner-certifications";
 export const partnerFAQ = "https://anthropic-partners.skilljar.com/page/faq-certifications";
 export const pearson = "https://www.pearsonvue.com/us/en/anthropic.html";
 export const examMinutes = 120;
 const academy = "https://anthropic-partners.skilljar.com";
-const guideRoot = "https://everpath-course-content.s3-accelerate.amazonaws.com/instructor%2F6nizmqk8tpzpfjvt6qmmav7rh%2Fpublic";
+const guideRoot = "https://cc.sj-cdn.net/instructor/6nizmqk8tpzpfjvt6qmmav7rh/public";
+const julyGuideRoot = "https://everpath-course-content.s3-accelerate.amazonaws.com/instructor%2F6nizmqk8tpzpfjvt6qmmav7rh%2Fpublic";
+
+// The November administration revision kept the July exam content. Earlier receipts keep their original URL.
+export const julyGuideUrls: Partial<Record<TrackId, string>> = {
+  "associate-foundations": `${julyGuideRoot}/1783542847%2FClaude+Certified+Associate+%E2%80%93+Foundations+Exam+Guide.pdf`,
+  "developer-foundations": `${julyGuideRoot}/1783542875%2FClaude+Certified+Developer+%E2%80%93+Foundations+Exam+Guide.pdf`,
+  "architect-professional": `${julyGuideRoot}/1783542810%2FClaude+Certified+Architect+%E2%80%93+Professional+Exam+Guide.pdf`,
+};
 
 function domain(id: number, title: string, weight: number, ...objectives: string[]): Domain {
   return { id, title, weight, objectives };
@@ -41,9 +49,9 @@ function domain(id: number, title: string, weight: number, ...objectives: string
 export const tracks: readonly Track[] = [
   {
     id: "associate-foundations", code: "CCAO-F", role: "Associate", level: "Foundations",
-    description: "Use Claude in everyday work. Practice giving clear instructions, checking outputs, and deciding when to hand a task to a person.",
+    description: "Practice using Claude in everyday work. Give clear instructions, check drafts, and decide when to ask a person to review.",
     count: 60, fee: 99, place: "school", assignment: "Prepare an enrollment reply",
-    guide: `${guideRoot}/1783542847%2FClaude+Certified+Associate+%E2%80%93+Foundations+Exam+Guide.pdf`,
+    guide: `${guideRoot}/1794946524/Claude_Certified_Associate_-_Foundations_Exam_Guide.pdf`,
     prep: `${academy}/path/claude-certified-associate-foundations`,
     domains: [
       domain(1, "Prompting and task execution", 14, "Write task-specific prompts", "Break complex work into steps", "Improve prompts through iteration", "Adapt prompts to the type of work"),
@@ -57,9 +65,9 @@ export const tracks: readonly Track[] = [
   },
   {
     id: "developer-foundations", code: "CCDV-F", role: "Developer", level: "Foundations",
-    description: "Build and ship applications with the Claude API, Claude Code, and MCP. Read traces and debug the behavior of a working integration.",
+    description: "Practice with Claude API, Claude Code, and MCP concepts. Read request traces and debug integration failures in simulated cases.",
     count: 53, fee: 125, place: "restaurant", assignment: "Validate a supplier invoice",
-    guide: `${guideRoot}/1783542875%2FClaude+Certified+Developer+%E2%80%93+Foundations+Exam+Guide.pdf`,
+    guide: `${guideRoot}/1794946716/Claude_Certified_Developer_-_Foundations_Exam_Guide.pdf`,
     prep: `${academy}/path/claude-certified-developer-foundations`,
     domains: [
       domain(1, "Agents and workflows", 14.7, "Choose an agent architecture", "Build agents with Claude", "Use agent patterns and frameworks"),
@@ -74,9 +82,9 @@ export const tracks: readonly Track[] = [
   },
   {
     id: "architect-foundations", code: "CCAR-F", role: "Architect", level: "Foundations",
-    description: "Design production agent systems. Practice orchestration, tool contracts, Claude Code workflows, and reliability under failure.",
+    description: "Practice designing agent systems for production. Test orchestration, tool contracts, Claude Code workflows, and recovery decisions in city cases.",
     count: 60, fee: 125, place: "dispatch", assignment: "Repair the order lookup",
-    guide: "https://cc.sj-cdn.net/instructor/6nizmqk8tpzpfjvt6qmmav7rh/public/1794946250/Claude_Certified_Architect_-_Foundations_Exam_Guide.pdf",
+    guide: `${guideRoot}/1794946250/Claude_Certified_Architect_-_Foundations_Exam_Guide.pdf`,
     prep: `${academy}/page/claude-certified-architect-foundations-prep-courses`,
     domains: [
       domain(1, "Agent architecture and orchestration", 27, "Run the agent loop", "Coordinate specialist agents", "Invoke workers with scoped context", "Enforce prerequisites and handoffs", "Intercept or transform tool calls with hooks", "Decompose complex work", "Resume or branch a session"),
@@ -88,9 +96,9 @@ export const tracks: readonly Track[] = [
   },
   {
     id: "architect-professional", code: "CCAR-P", role: "Architect", level: "Professional",
-    description: "Lead enterprise deployments. Design integrations, establish evaluation and governance, and agree on how a system will operate after launch.",
+    description: "Practice the decisions behind an enterprise deployment. Design integrations, evaluate rollout evidence, and plan how the team will operate the system.",
     count: 63, fee: 175, place: "office", assignment: "Plan a support rollout",
-    guide: `${guideRoot}/1783542810%2FClaude+Certified+Architect+%E2%80%93+Professional+Exam+Guide.pdf`,
+    guide: `${guideRoot}/1794946331/Claude_Certified_Architect_-_Professional_Exam_Guide.pdf`,
     prep: `${academy}/path/claude-certified-architect-professional`,
     domains: [
       domain(1, "Solution design and architecture", 17, "Translate business problems", "Design the end-to-end flow", "Select an architecture pattern", "Orchestrate specialist agents", "Decompose a complex problem", "Design to value and service targets"),
@@ -114,6 +122,10 @@ export function examRegistration(track: Track) {
 
 export function trackHref(track: Track) {
   return `/certifications/${track.id}`;
+}
+
+export function trackPracticeHref(track: Track) {
+  return `${trackHref(track)}?practice=1`;
 }
 
 export function cityAssignmentHref(track: Track) {

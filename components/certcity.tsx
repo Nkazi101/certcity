@@ -1,13 +1,15 @@
 "use client";
 
 import {
-  ArrowLeft, ArrowRight, ArrowUpRight, ChevronDown, ChevronRight,
-  ClipboardList, GraduationCap, Map, MapPin, MessagesSquare, ScanLine, X, Wrench,
+  ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, ChevronDown, ChevronRight,
+  CircleHelp, ClipboardList, GraduationCap, Map, MapPin, MessagesSquare, ScanLine, X, Wrench,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { dispatchName, places, stations } from "../lib/world";
 import { defaultDistrict, districts } from "../lib/scene/districts";
 import type { DistrictId } from "../lib/scene/districts";
+import type { MissionRoomReplay } from "../lib/scene/renderer";
 import type { PlaceId, StationId } from "../lib/world";
 import { baselineShift, dispatchProgressKey, initialRoutes, meetsDispatchGoal, readDispatch, runShift, saveDispatch } from "../lib/shift";
 import type { Condition, Contract, DispatchPolicy, Route, Routes, ShiftResult } from "../lib/shift";
@@ -24,6 +26,7 @@ import { assignments as cityCases, isCityAssignment } from "../lib/claude/assign
 import type { CityAssignmentId } from "../lib/claude/assignments";
 import { activeAssignmentKey, readActiveAssignment, readCityAssignment, saveActiveAssignment, saveCityAssignment } from "../lib/claude/city-progress";
 import { progressScope, subscribeToProgress } from "../lib/progress-storage";
+import { recordPracticeMilestone } from "../lib/practice-measurement";
 import { openDispatchAttempt, saveDispatchRun } from "../lib/supabase/dispatch";
 import type { DispatchCommand } from "../lib/supabase/dispatch";
 import { AccountButton, useAccount } from "./account";
@@ -44,6 +47,9 @@ import { citySigns } from "../lib/city-signs";
 import { caseworkFor } from "../lib/claude/cases";
 import { workLayout } from "../lib/claude/cases/layouts";
 import { roomCaseOutcome, roomFirstAction } from "../lib/claude/cases/presentation";
+import { decemberBlueprint, decemberVersion } from "../lib/claude/december-blueprints";
+import { missionGuideCases } from "../lib/claude/curriculum/city-guide";
+import { readReadiness, readinessKey } from "../lib/claude/readiness";
 
 type View = "city" | "depot" | "mission";
 
@@ -61,8 +67,10 @@ function canEnterMission(mission: Mission, records: PortfolioRecords, legacy: Re
     (!unmetMissions(mission, records, legacy).length && !missingExpertise(mission, records).length);
 }
 
-function replaceMissionLocation(mission?: Mission) {
+function replaceMissionLocation(mission?: Mission, guideObjective?: string | null) {
   const url = new URL(window.location.href);
+  const preserveGuide = mission && (url.searchParams.get("pathway") === mission.track || url.searchParams.get("assignment") === mission.place);
+  url.searchParams.delete("study");
   if (mission) {
     url.searchParams.set("pathway", mission.track);
     url.searchParams.set("mission", mission.id);
@@ -70,6 +78,14 @@ function replaceMissionLocation(mission?: Mission) {
     if (!url.searchParams.has("mission")) return;
     url.searchParams.delete("mission");
     url.searchParams.delete("pathway");
+  }
+  if (guideObjective !== undefined) {
+    url.searchParams.set("guide", decemberVersion);
+    if (guideObjective) url.searchParams.set("objective", guideObjective);
+    else url.searchParams.delete("objective");
+  } else {
+    if (!preserveGuide) url.searchParams.delete("guide");
+    url.searchParams.delete("objective");
   }
   url.searchParams.delete("assignment");
   window.history.replaceState(window.history.state, "", url);
@@ -259,10 +275,13 @@ export function CertCity() {
   const [dispatchVisit, setDispatchVisit] = useState(false);
   const [taskConversationOpen, setTaskConversationOpen] = useState(false);
   const [buildingStation, setBuildingStation] = useState<BuildingStation | null>(null);
+  const [roomReplay, setRoomReplay] = useState<{ replay: MissionRoomReplay; preview: HTMLCanvasElement | null } | null>(null);
+  const [currentGuide, setCurrentGuide] = useState(false);
+  const [guideObjective, setGuideObjective] = useState<string>();
   const [completedAssignments, setCompletedAssignments] = useState<Partial<Record<CityAssignmentId, boolean>>>({});
   const [selectedCertification, setSelectedCertification] = useState<Track | null>(null);
   const [certificationPage, setCertificationPage] = useState<CertificationPage | null>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
+  const heading = useRef<HTMLElement>(null);
   const journal = useRef<HTMLDialogElement>(null);
   const missionDialog = useRef<HTMLDialogElement>(null);
   const certificationMenu = useRef<HTMLDialogElement>(null);
@@ -292,6 +311,7 @@ export function CertCity() {
   const certificationMission = view === "mission" ? interiorMission : null;
   const lensQuestion = certificationMission ? lensForMission(certificationMission) : undefined;
   const interior = interiorMission ? missionExperiences[interiorMission.id] : undefined;
+  const guideCases = currentGuide && interiorMission ? missionGuideCases(interiorMission.track, interiorMission.id) : [];
   const workId = activeMission?.kind === "workbench" && hasAssignmentWork(activeMission.id) ? activeMission.id : undefined;
   const exercise = interiorMission ? caseworkFor(interiorMission.id) : undefined;
   const caseRecord = interiorMission ? records[interiorMission.id] : undefined;
@@ -403,6 +423,22 @@ export function CertCity() {
   }, [ready, committedDispatchCheck]);
 
   useEffect(() => {
+    if (!ready || !selectedCertification) return;
+    function refresh() {
+      if (!selectedCertification) return;
+      const linked = new URLSearchParams(window.location.search).get("guide");
+      const preference = readReadiness(selectedCertification)?.version;
+      const version = linked === decemberVersion || linked === "july-2026" ? linked : preference;
+      setCurrentGuide(!!decemberBlueprint(selectedCertification) && (version === decemberVersion ||
+        (!version && Date.now() >= Date.parse("2026-12-07T00:00:00-06:00"))));
+    }
+    refresh();
+    return subscribeToProgress((key, local) => {
+      if (!local && (key === readinessKey(selectedCertification) || key === null)) refresh();
+    });
+  }, [ready, selectedCertification]);
+
+  useEffect(() => {
     if (!ready) return;
     const url = new URL(window.location.href);
     const assignmentTrack = tracks.find(({ place }) => place === url.searchParams.get("assignment"));
@@ -425,7 +461,11 @@ export function CertCity() {
           ? missionsFor(track.id).filter(({ kind }) => kind === "original").map(({ id }) => id) : []),
       ]);
       setDistrict(places.find(({ id }) => id === track.place)!.district);
-      if (mission && canEnterMission(mission, restored, legacy)) enterMission(mission, track);
+      const linkedGuide = url.searchParams.get("guide") === decemberVersion && url.searchParams.has("objective") && mission && missionGuideCases(track.id, mission.id).length > 0;
+      if (mission && canEnterMission(mission, restored, legacy)) {
+        const study = mission.kind === "dispatch" && url.searchParams.get("study") === "followup" ? "followup" : undefined;
+        enterMission(mission, track, study, linkedGuide ? url.searchParams.get("objective") : undefined);
+      }
       else {
         replaceMissionLocation();
         if (mission) setRequestedMission(mission.id);
@@ -532,8 +572,10 @@ export function CertCity() {
     enterMission(mission, track, study);
   }
 
-  function enterMission(mission: Mission, track: Track, study?: "check" | "followup") {
-    replaceMissionLocation(mission);
+  function enterMission(mission: Mission, track: Track, study?: "check" | "followup", requestedObjective?: string | null) {
+    if (!study) recordPracticeMilestone("started", track.id, "city");
+    replaceMissionLocation(mission, requestedObjective);
+    setRoomReplay(null);
     if (mission.kind === "dispatch") {
       enterDepot();
       setDispatchVisit(!study);
@@ -548,8 +590,10 @@ export function CertCity() {
     setActiveMission(mission.kind === "workbench" ? mission : null);
     setCityAssignment(mission.kind === "original" ? track : null);
     const roomHasStations = hasAssignmentWork(mission.id) || !!caseworkFor(mission.id);
-    setTaskConversationOpen(!study && !roomHasStations);
-    setBuildingStation(null);
+    setTaskConversationOpen(!study && requestedObjective === undefined && !roomHasStations);
+    setGuideObjective(missionGuideCases(track.id, mission.id).some(([id]) => id === requestedObjective) ? requestedObjective! : undefined);
+    if (requestedObjective !== undefined) setCurrentGuide(true);
+    setBuildingStation(requestedObjective === undefined ? null : "guide");
     goTo("mission");
     if (study) openCertification(study === "check" ? "mission-check" : "mission-followup");
   }
@@ -557,6 +601,7 @@ export function CertCity() {
   function selectBuildingStation(station: BuildingStation | null) {
     if (station && !buildingStation && document.activeElement instanceof HTMLButtonElement) stationOpener.current = document.activeElement;
     setBuildingStation(station);
+    if (station === "guide") setGuideObjective(undefined);
     setTaskConversationOpen(station === "work" && !workId && !exercise);
   }
 
@@ -643,6 +688,7 @@ export function CertCity() {
 
   function compareShift() {
     if (savingShift.current) return;
+    recordPracticeMilestone("started", libraryTrack.id, "city");
     setPlaying(false);
     setResult(runShift(contract, routes));
     setSaveStatus(null);
@@ -692,6 +738,7 @@ export function CertCity() {
         savingShift.current = false;
       }
       if (result && meetsDispatchGoal(result)) {
+        recordPracticeMilestone("completed", libraryTrack.id, "city");
         workflow.current?.close();
         openCertification("pathway");
       }
@@ -702,6 +749,7 @@ export function CertCity() {
     if (stored) {
       setSavedPolicy(policy);
       if (result && meetsDispatchGoal(result)) {
+        recordPracticeMilestone("completed", libraryTrack.id, "city");
         workflow.current?.close();
         openCertification("pathway");
       }
@@ -725,6 +773,9 @@ export function CertCity() {
     setPlaying(true);
   }
 
+  const showWelcome = view === "city" && !inspecting && !selectedCertification;
+  const DistrictHeading = showWelcome ? "div" : "h1";
+
   return (
     <div className="game-shell">
       <header className="world-hud">
@@ -736,7 +787,7 @@ export function CertCity() {
             </picture>
           </button>
           <div className="district-switcher">
-            <h1 ref={heading} tabIndex={-1}>
+            <DistrictHeading ref={(element) => { heading.current = element; }} tabIndex={-1}>
               {view === "city"
                 ? <button className="world-title" type="button" id="district-toggle" aria-label="Choose district"
                     aria-expanded={districtMenu} aria-controls="district-menu" onClick={() => setDistrictMenu((open) => !open)}>
@@ -745,7 +796,7 @@ export function CertCity() {
                     <ChevronDown size={15} aria-hidden="true" />
                   </button>
                 : <span className="world-title"><MapPin size={17} aria-hidden="true" />{view === "mission" ? activePlace?.shortName ?? "Assignment" : dispatchName}</span>}
-            </h1>
+            </DistrictHeading>
             {view === "city" && districtMenu && (
               <nav id="district-menu" className="district-menu" aria-label="Choose a district">
                 {districts.map(({ id, name, description }) => (
@@ -782,6 +833,9 @@ export function CertCity() {
               onClick={() => moduleSteps ? openCertification("pathway") : certificationMenu.current?.showModal()}>
               <GraduationCap size={18} aria-hidden="true" /> <span>{selectedCertification?.code ?? "Certifications"}</span>
             </button>
+            <Link className="nav-button city-help-nav" href="/help" aria-label="Study help and contact" title="Study help">
+              <CircleHelp size={18} aria-hidden="true" />
+            </Link>
             <AccountButton city />
           </nav>
         </div>
@@ -821,10 +875,11 @@ export function CertCity() {
               kind="mission"
               missionRoom={interior ? { ...interior, missionId: interiorMission?.id, workId, surface: exercise && interiorMission ? workLayout(interiorMission.id).kind : undefined } : undefined}
               assignmentComplete={missionComplete}
-              panelOpen={buildingStation === "work" || buildingStation === "evidence"}
+              roomReplay={roomReplay}
+              panelOpen={buildingStation === "work" || buildingStation === "evidence" || buildingStation === "guide"}
               description={`${interior?.room ?? "Assignment room"} interior for ${interiorMission?.title ?? "the assignment"}.`}
               markers={buildingMarkers}
-              selected={buildingStation}
+              selected={buildingStation === "guide" ? "evidence" : buildingStation}
               onSelect={selectBuildingStation}
               assignmentStatuses={missionComplete ? { work: "Assignment complete" } : undefined}
             />
@@ -852,14 +907,29 @@ export function CertCity() {
                 <button key={id} type="button" className="button button-outline" aria-haspopup="dialog" onClick={() => selectBuildingStation(id)}>
                   <Icon size={16} aria-hidden="true" />{name}
                 </button>)}</div>
+              {guideCases.length > 0 && <button type="button" className="button button-outline building-guide-action" aria-haspopup="dialog"
+                onClick={() => selectBuildingStation("guide")}><BookOpen size={16} aria-hidden="true" /> Current exam guide practice</button>}
             </div>
           </aside>}
 
-          {loaded && !inspecting && view !== "mission" && (
+          {showWelcome && (
+            <section className="city-welcome" aria-labelledby="city-welcome-title">
+              <h1 id="city-welcome-title">Claude certification practice</h1>
+              <p>Build and test Claude workflows in a 3D St. Louis.</p>
+              <Link href="/certifications" className="button button-primary" prefetch={false}>
+                <BookOpen size={16} aria-hidden="true" /> Browse exam practice
+              </Link>
+              <button className="button button-text" type="button" disabled={!loaded} onClick={() => openJournal(false)}>
+                Choose a certification <ArrowRight size={15} aria-hidden="true" />
+              </button>
+            </section>
+          )}
+          {loaded && !showWelcome && !inspecting && view !== "mission" && (
             <button className="quest-hud" type="button" aria-haspopup="dialog" onClick={() => openJournal(false)}>
               <span className="assignment-icon"><ClipboardList size={20} aria-hidden="true" /></span>
-              <span><span className="small-label">{selectedCertification?.code ?? "Certification pathways"}</span>
+              <span className="quest-hud-copy"><span className="small-label">{selectedCertification?.code ?? "Certification pathways"}</span>
                 <strong>{selectedCertification ? `${available.length} ${available.length === 1 ? "mission" : "missions"} available` : "Choose a certification"}</strong></span>
+              {selectedCertification && <span className="quest-hud-count" aria-hidden="true">{available.length}</span>}
               <ArrowRight size={17} aria-hidden="true" />
             </button>
           )}
@@ -917,7 +987,7 @@ export function CertCity() {
 
       <CityCertificationDialog dialog={certificationMenu} selected={selectedCertification} onSelect={chooseTrack} />
       {selectedCertification && <MissionJournal dialog={journal} track={selectedCertification} records={records} legacy={legacy}
-        progress={journalProgress} requestedMission={requestedMission} onMission={openMission} onStudy={(mission, page) => openMission(mission, selectedCertification, false, page)}
+        progress={journalProgress} currentGuide={currentGuide} requestedMission={requestedMission} onMission={openMission} onStudy={(mission, page) => openMission(mission, selectedCertification, false, page)}
         dispatchDueAt={certification.progress.followup ? null : certification.dueAt ?? (certification.progress.first ? followupAt(certification.progress.first) : null)}
         onChangeTrack={() => {
           journal.current?.close();
@@ -925,8 +995,11 @@ export function CertCity() {
         }} />}
       {view === "mission" && interior && buildingStation && interiorMission && !taskConversationOpen && (buildingStation !== "work" || workId || exercise) &&
         <BuildingAssignmentDialog key={`${interiorMission.id}:${buildingStation}`} mission={interiorMission} id={workId} experience={interior} caseFiles={activeCase?.cases}
-          station={buildingStation} dialog={buildingDialog} record={records[interiorMission.id]} onChange={refreshPortfolio} moduleProgress={moduleProgress}
+          station={buildingStation} dialog={buildingDialog} record={records[interiorMission.id]} onChange={refreshPortfolio} moduleProgress={moduleProgress} objective={guideObjective}
+          onRoomReplay={(replay, preview) => setRoomReplay({ replay, preview })}
           onClose={() => {
+            setRoomReplay((latest) => latest ? { ...latest, preview: null } : null);
+            if (buildingStation === "guide") replaceMissionLocation(interiorMission);
             if (openPriorReplay.current) {
               openPriorReplay.current = false;
               setBuildingStation("work");
@@ -946,18 +1019,27 @@ export function CertCity() {
           } : undefined}
           onWork={() => selectBuildingStation("work")}
           onSaved={() => {
+            recordPracticeMilestone("completed", interiorMission.track, "city");
             savedBuildingOutcome.current = true;
             buildingDialog.current?.close();
           }} />}
       {taskConversationOpen && activeMission?.kind === "workbench" && <MissionWorkbench key={`workbench:${activeMission.id}`} mission={activeMission} record={records[activeMission.id]}
-        dialog={missionDialog} enterWork={buildingStation === "work"} onChange={refreshPortfolio} onTaskSaved={() => { savedLegacyOutcome.current = true; missionDialog.current?.close(); }}
+        dialog={missionDialog} enterWork={buildingStation === "work"} onChange={refreshPortfolio} onTaskSaved={() => {
+          recordPracticeMilestone("completed", activeMission.track, "city");
+          savedLegacyOutcome.current = true;
+          missionDialog.current?.close();
+        }}
         onClose={returnToMissionPathway} moduleProgress={moduleProgress} />}
       {taskConversationOpen && cityAssignment && activeCase && activePlace && isCityAssignment(cityAssignment.id) &&
         <CityAssignmentDialog key={`city-assignment:${cityAssignment.id}`} dialog={cityAssignmentDialog} assignment={activeCase}
           mission={interiorMission!} enterWork={buildingStation === "work"} record={records[interiorMission!.id]} experience={missionExperiences[interiorMission!.id]!}
           person={activePlace.person} role={activePlace.role} savedChoices={activeSave?.choices ?? null} complete={!!completedAssignments[cityAssignment.id]}
           onClose={returnToMissionPathway} onCheck={refreshPortfolio} onComplete={(choices) => completeCityAssignment(cityAssignment, choices)}
-          onTaskSaved={() => { savedLegacyOutcome.current = true; cityAssignmentDialog.current?.close(); }} moduleProgress={moduleProgress} />}
+          onTaskSaved={() => {
+            recordPracticeMilestone("completed", cityAssignment.id, "city");
+            savedLegacyOutcome.current = true;
+            cityAssignmentDialog.current?.close();
+          }} moduleProgress={moduleProgress} />}
       {visitorPlace && <PlaceConversation key={visitorPlace.id} dialog={visitDialog} place={visitorPlace}
         library={visitorPlace.id === "olive-library" ? {
           complete: libraryComplete,
@@ -970,7 +1052,7 @@ export function CertCity() {
         onClose={() => setPlaceVisit(null)} />}
       {dispatchVisit && <DispatchConversation dialog={dispatchDialog} onClose={() => setDispatchVisit(false)} onSystem={openLookup}
         moduleProgress={moduleProgress} />}
-      <CertificationDialog dialog={certificationDialog} page={certificationPage} progress={certification.progress}
+      <CertificationDialog dialog={certificationDialog} page={certificationPage} progress={certification.progress} currentGuide={currentGuide}
         shiftComplete={shiftComplete} sessionOnly={certification.sessionOnly} mission={certificationMission}
         startStudy={certification.startStudy} studyPending={certification.studyPending}
         studyError={certification.studyError} retryStudy={certification.retryStudy} studyDueAt={certification.dueAt}

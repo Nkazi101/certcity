@@ -31,6 +31,48 @@ Begin with a feasibility sample to estimate attrition, time and score variance. 
 
 **Commercial discovery.** Interview partner program leads and learners about time-to-certification, procurement, existing free training, eligibility and the usefulness of cohort reporting. Offer a concrete paid pilot with defined seats, study duration and feedback. Keep individual demand on a separate free demo track. A useful gate is one paid pilot and two independent qualified prospects agreeing to evaluate, followed by a contribution check after support, content time and inference. This is an initial threshold. A signed pilot and actual engagement carry more weight than survey intent. [Anthropic partner certification launch](https://claude.com/resources/articles/four-role-based-claude-certifications), [CertGrove pricing](https://certgrove.com/pricing), [AWS Cloud Quest](https://aws.amazon.com/blogs/training-and-certification/introducing-the-new-aws-cloud-quest-ai-powered-practice-hands-on-building-and-a-path-to-official-aws-badges/)
 
+## Release verification and recovery
+
+### Prepare a release candidate
+
+1. Assign a release owner, an independent assessment reviewer, and a data steward. Record the Git commit, previous compatible build, supported browsers and devices, and the checked migration versions in the release record. Set `NEXT_PUBLIC_CERTCITY_RELEASE` to the Git SHA when building staging or production so reported health signals identify the deployed build.
+2. For each track and guide, record the selected official guide, published form IDs, authored item IDs, scoring and practical rubric versions, source links, and expected freshness rules. Retain the delivered assessment snapshots and practical receipts for a sample of staging accounts. Record an editorial change in a new content revision. Use a new item identity when the assessed decision, answer key, or evidence changes enough that prior exposure or results would be misleading.
+3. Require the verification workflow to pass from a clean checkout. It installs locked dependencies and runs the TypeScript, content, evidence, city route, and progress recovery checks before building a static application. Keep the job free of deployment credentials. Save its commit and result with the release record. [Repository verification workflow](../.github/workflows/verify.yml)
+4. Smoke test the build on desktop and mobile. In each track, open a city job, use its source records and work surface, save the result, read the debrief, and reach the exam-style check. Verify the keyboard path without the 3D view. Run a rehearsal with a fresh account, resume it after reload, and check scoring and archived review after a subsequent wording edit. Exercise delayed practical and reassessment availability with a controlled test clock and fresh fixtures. Record browser, device, expected result, and observed result.
+
+### Stage the database change
+
+As of this release plan, the repository includes the feedback and diagnostics migration. Verify deployment status independently for each environment. Use a separate Supabase staging project or a schema-only preview branch populated with synthetic learners. Point the staging build at its own project URL and publishable key. Keep the service credential in the authorized operations channel. [Pending migration](../supabase/migrations/20261121023604_progress_recovery_and_feedback.sql) · [Supabase environments](https://supabase.com/docs/guides/deployment)
+
+Before applying the migration, verify the staging project reference, record the migration history and available recovery point, and preview the changes. The release owner applies the migration in staging after checking the dry run, then confirms it appears in the linked history. Use the same reviewed SQL and repeat the dry run before any separately approved production migration. [Supabase migration procedures](https://supabase.com/docs/guides/deployment/database-migrations)
+
+```sh
+supabase link --project-ref "<staging-project-ref>"
+supabase migration list --linked
+supabase db push --linked --dry-run
+```
+
+Run the learner access, scoring, and feedback SQL checks on a disposable test database. On staging, use two test learners and a guest session. Verify that each learner can resume their own work and file an item report, that the other learner cannot read it, and that the guest flow can download a report. Check that opted-in diagnostic events reach the staging table and remain unavailable to ordinary learner reads. Record the negative cases as part of the release decision. [SQL checks](../supabase/tests/) · [Feedback permissions test](../supabase/tests/progress_recovery_feedback.sql) · [Study help and recovery](../app/help/page.tsx)
+
+### Operate support and monitoring
+
+The data steward owns access approval, review of retention, and deletion requests. Restrict cross-account access to authorized operators. Item reports contain the learner account, item and guide identifiers, an available form revision, and the description the learner chooses to submit. Treat descriptions as potentially identifying. Handle reports in the restricted review process, use fictional examples in staging, and remove test rows when the drill ends.
+
+Diagnostics require a signed-in learner to opt in on that device. Verify that the initial state is off and that opting out stops later events. The current payload records a typed outcome, surface, release and optional elapsed time under the learner account. Audit collection against that payload before launch. Keep study answers, raw requests, artifacts, and report bodies out of health logs. Before enabling collection with learners, document who can access the records, how long they are kept, and who handles deletion requests. The opt-in setting and its checks are separate from consent for a research cohort. [Client diagnostics](../lib/client-health.ts)
+
+During a staged release, review sync loss and recovery, renderer fallback, and elapsed scene timings by release and surface. The database deduplicates a signal by learner, UTC day, type and surface. Report counts as opted-in learner-days, with the sample size and its coverage limitations. Retain the staged baseline to judge subsequent changes. Assign an owner and next action to item reports. A reproducible cross-account disclosure, lost work, broken keyboard path, or scoring regression blocks further rollout until resolved.
+
+### Drill recovery and rollback
+
+1. On disposable staging, start the same signed-in learner in two browsers. Save independent attempts, then create competing changes to the same draft. Verify the merged histories and that a conflict preserves recoverable copies. Test an offline save, reconnect, and reload both browsers. Compare the selected answers, archive revision, capstone receipt, and progress totals before and after.
+2. Export the learner's progress from Study help and recovery. Import into an isolated test browser for the same owner. Verify the guest export path separately. Inspect a large archive and a malformed import. Confirm the learner can retain the valid device copy and that the UI explains what could be restored or synchronized. Treat exported files as learner data and store the drill copies only in the staging test location.
+3. Exercise the database recovery procedure on an isolated environment with synthetic records. Record the backup or point-in-time restore point, recovery duration, recovered row counts, migration history, and missing writes after that point. Verify account boundaries and archived results on the restored copy before considering it available. Record the actual recovery limits for the selected Supabase plan. [Supabase backups](https://supabase.com/docs/guides/platform/backups) · [Restore to a new project](https://supabase.com/docs/guides/platform/clone-project)
+4. To roll back the application, pause expansion, preserve current progress, and redeploy a known-good build that has passed the archive-reading and restore tests against the current data. If the earlier UI predates the current archive format, prepare a compatibility build before reopening writes. Keep additive feedback tables and their data while investigating. Treat a database restore as a separate operation, review the writes it would miss, and rehearse on an isolated copy before any production decision.
+
+### Decide what the evidence supports
+
+The technical release gate covers staging recovery, access controls, accessible learner workflows, and independently reviewed content. It supports a release of guided practice. An exam-readiness claim requires the separate learner evidence plan above, including eligible Claude Partner Network candidates by track and guide, an active comparator, independently scored delayed transfer, and optional consented official outcomes. Record baseline experience, attendance, timing, missing data, adverse effects, and uncertainty before drawing conclusions. Evaluate the readiness threshold on a cohort independent of its calibration. The current readiness benchmark is provisional, and these release steps have yet to be verified on a live cohort. [Testing Standards](https://www.apa.org/science/programs/testing/standards) · [Partner Academy certification information](https://anthropic-partners.skilljar.com/page/partner-certifications)
+
 ## Phased roadmap
 
 Roles are effort assumptions. One person may cover several, but assessment review and critical technical verification require an independent reader. Discovery and buyer recruitment start early, before the more expensive phases.

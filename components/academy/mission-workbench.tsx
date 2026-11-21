@@ -10,6 +10,8 @@ import { objectiveTitle } from "../../lib/claude/practice";
 import { sources } from "../../lib/claude/items";
 import { missionExperiences } from "../../lib/claude/mission-experiences";
 import { ExternalLink } from "./chrome";
+import { QuestionReport } from "./question-report";
+import { evidenceFingerprint } from "../../lib/claude/evidence-snapshot";
 import { ConversationAction, ConversationFrame } from "../city-conversation";
 import { MissionLab } from "./mission-lab";
 
@@ -62,6 +64,7 @@ export function MissionTransfer({ mission, record, onChange }: {
             <summary><span>{question.objective} · {objectiveTitle(track, question)}</span><span>{correct ? "Correct" : "Needs review"}</span></summary>
             <div className="academy-review-body">
               <p><strong>{question.scenario}</strong></p>
+              {question.context && <p className="mission-question-context">{question.context}</p>}
               <p>{question.prompt}</p>
               <p>{question.explanation}</p>
               {result.priorExposure.includes(question.id) && <p>Previously seen in practice.</p>}
@@ -82,6 +85,7 @@ export function MissionTransfer({ mission, record, onChange }: {
                   setError(!response.saved);
                   onChange();
                 }}>Mark explanation reviewed</button>}
+              <QuestionReport trackId={track.id} version="july-2026" itemId={question.id} revision={evidenceFingerprint(question)} />
             </div>
           </details>;
         })}
@@ -99,7 +103,7 @@ export function MissionTransfer({ mission, record, onChange }: {
             const picks = answers[question.id] ?? [];
             const multiple = question.correct.length > 1;
             return <fieldset className="academy-fieldset" key={question.id} disabled={busy}>
-              <legend><strong>{question.scenario}</strong><span>{question.prompt}</span><small>{multiple ? "Select two responses" : "Select one response"}</small></legend>
+              <legend><strong>{question.scenario}</strong>{question.context && <span className="mission-question-context">{question.context}</span>}<span>{question.prompt}</span><small>{multiple ? "Select two responses" : "Select one response"}</small></legend>
               {question.options.map(([id, label]) => <label className="academy-option" key={id}>
                 <input name={question.id} type={multiple ? "checkbox" : "radio"} checked={picks.includes(id)}
                   disabled={multiple && picks.length >= question.correct.length && !picks.includes(id)}
@@ -164,6 +168,7 @@ export function MissionFollowup({ mission, record, onChange }: {
               {question.rationales[id] && <p>{question.rationales[id]}</p>}
             </li>)}</ul>
             <ExternalLink href={url}>{label}</ExternalLink>
+            <QuestionReport trackId={track.id} version="july-2026" itemId={question.id} revision={evidenceFingerprint(question)} />
           </div>
         </details>;
       })}

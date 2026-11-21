@@ -200,6 +200,22 @@ export const decemberDeveloperCases = caseQuestions(
       "Return not found for every limited request so callers can continue."],
   ], "december");
 
+const professionalRevisedReview: Record<string, readonly string[]> = {
+  "december-infra-runtime": [
+    "The worker can remain private while conversation history and tool results still cross the prohibited service boundary.",
+    "A lower retention period does not change where the records are processed.",
+    "This satisfies the inference constraint only. The proposed session service is still outside the approved boundary.",
+    "This satisfies all stated custody requirements and assigns runtime operations to the team.",
+  ],
+  "december-infra-retry-control": [
+    "A longer timeout can reduce occurrence but cannot prove whether a timed-out write committed.",
+    "This reduces repeated pressure on the throttled read path.",
+    "A retry can recover the prior outcome without creating a second release.",
+    "An unavailable result must stay distinguishable from a completed empty lookup.",
+    "Read service health cannot establish whether a previous release was committed.",
+  ],
+};
+
 export const decemberProfessionalCases = caseQuestions(
   "Municipal infrastructure rollout board",
   "Several service operators are consolidating infrastructure assistance. Some records must stay in approved environments. Teams review the agent’s instructions, retrieval, evaluation and deployment as a release package. Human operators retain authority for closures and account changes.",
@@ -210,12 +226,13 @@ export const decemberProfessionalCases = caseQuestions(
       "Delegate drafting and evidence. Give shutdown authority to the operator.",
       "Have two models approve it if the operator is unavailable.",
       "Delegate approval to a free-text document uploaded by a trusted person."],
-    ["infra-runtime", "1.6", "managed", "Tool execution requires a private network and approved custody for state. The service team can operate a harness. What selection process fits?",
-      "d", "Verify custody, feature and network requirements before choosing a surface and runtime. Self-hosted execution may have different state custody from a managed service.",
-      "Select solely by model ranking.",
-      "Deploy in a public sandbox and use client-side tokens to reach the private network.",
-      "Choose the hosted service with an approved execution region and rely on that setting to cover logs, retained sessions and derived data across all components.",
-      "Verify execution, tool access and data custody before choosing the runtime."],
+    ["infra-runtime", "1.6", "managed", "The transit agency approves a partner inference service in its private cloud. Contract records, inference inputs and conversation history must remain inside that approved boundary. The managed service under evaluation can reach a worker there, but keeps its own session history outside the boundary. The agency can own a runtime. Which design can launch?",
+      "d",
+      "The approved boundary covers inference and conversation state as well as tool execution. Own the runtime and session storage on the approved surface, and accept the resulting feature and operations trade-offs.",
+      "Use the managed service with a self-hosted worker and pass it raw tool results.",
+      "Use first-party inference outside the approved cloud and negotiate a short retention period.",
+      "Use approved partner inference but let the proposed managed service keep session history.",
+      "Use approved inference. Operate the loop, tools and session store inside the boundary."],
     ["infra-prompt-diagnosis", "2.2", "prompt", "A system prompt says to answer concisely. The output omits the scope of uncertainty and no unknown-value format is specified. Which revision addresses the failure?",
       "c", "Specify the missing output behavior directly and retain valid variation in otherwise appropriate responses.",
       "Require every response to be longer than a page.",
@@ -241,13 +258,14 @@ export const decemberProfessionalCases = caseQuestions(
       "Always vector-index any collection, even one short file.",
       "Use agentic search across all accounts and filter after generation.",
       "Cache the entire corpus outside the approved retention boundary."],
-    ["infra-retry-control", "3.8", "errors", "A capacity limit is exceeded on retries and prior endpoint writes sometimes commit without returning a result. Which controls protect both constraints?",
-      "bc", "Cap retries with bounded backoff and make side effects idempotent or reconcile before resubmission.",
-      "Replay each interrupted write immediately with a new identity.",
-      "Use bounded backoff for eligible transient reads and honor available retry hints.",
-      "Reconcile or deduplicate writes with a stable operation identity.",
-      "Turn every timeout into an empty success.",
-      "Repeat authorization failures until the endpoint responds."],
+    ["infra-retry-control", "3.8", "errors", "A service desk trace shows 429s during a burst of read-only capacity checks. A separate release operation committed before its client timed out, and a retry with a different operation ID produced a second release. Which two changes address the distinct faults?",
+      "bc",
+      "The read burst needs bounded retry pressure. The state-changing operation needs durable identity and reconciliation of an ambiguous observed outcome before another action.",
+      "Increase the write timeout and continue assigning new IDs to every retry.",
+      "Bound read concurrency and backoff, honoring available rate-limit retry hints.",
+      "Reconcile release status by the original operation ID and deduplicate downstream commits.",
+      "Return the same empty response for rate limiting and an unsuccessful read.",
+      "Pause every new write until the capacity service reports a healthy response."],
     ["infra-judge-drift", "4.3", "eval", "The judge's preferred model changes when the same pair is shown in reverse order. What experiment and correction are best supported?",
       "d", "Test both positions on a labeled calibration set. Control position and measure agreement with human labels.",
       "Keep the same order and average model confidence.",
@@ -315,4 +333,7 @@ export const decemberProfessionalCases = caseQuestions(
       "Use the model’s confidence as owner sign-off.",
       "Require integration verification with recorded evidence before promotion.",
       "Remove responsibility tracking after a clean unit test."],
-  ], "december");
+  ], "december").map((question) => {
+  const review = professionalRevisedReview[question.id];
+  return review ? { ...question, rationales: Object.fromEntries(question.options.map(([key], index) => [key, review[index]])) } : question;
+});

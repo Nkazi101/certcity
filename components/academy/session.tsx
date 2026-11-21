@@ -1,14 +1,17 @@
 import { ArrowLeft, ArrowRight, Check, Clock3 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { isCorrect } from "../../lib/certification-progress";
 import { decemberVersion, examGuideLabel, rehearsalBlueprint } from "../../lib/claude/december-blueprints";
 import type { Track } from "../../lib/claude/blueprints";
 import { rehearsalFormLabel } from "../../lib/claude/assessment/forms";
+import { evidenceFingerprint } from "../../lib/claude/evidence-snapshot";
 import { sources } from "../../lib/claude/items";
 import type { PracticeItem } from "../../lib/claude/items";
 import { itemDomain, objectiveTitle, responseComplete, score, sessionItems } from "../../lib/claude/practice";
 import type { Attempt, Session } from "../../lib/claude/practice";
 import { ExternalLink } from "./chrome";
+import { QuestionReport } from "./question-report";
 
 export const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 const dueFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
@@ -21,7 +24,8 @@ export function modeLabel(track: Track, record: Pick<Session, "mode" | "domain" 
   if (record.mode === "mixed") return "Mixed practice";
   if (record.mode === "followup") return "Seven-day follow-up";
   if (record.mode === "assessment") return rehearsalFormLabel(record.form);
-  return track.domains.find(({ id }) => id === record.domain)?.title ?? "Domain practice";
+  if (record.mode === "reassessment") return "Domain reassessment";
+  return rehearsalBlueprint(track, record.version).domains.find(({ id }) => id === record.domain)?.title ?? "Domain practice";
 }
 
 export function PracticeSession({ track, session, error, busy, onMove, onChoose, onPresent, onSubmit, onExit }: {
@@ -87,7 +91,8 @@ export function PracticeSession({ track, session, error, busy, onMove, onChoose,
       <div className="academy-workspace-title">
         <p className="academy-kicker">{track.code}</p>
         <h1>{modeLabel(track, session)}</h1>
-        <p>{complete} of {items.length} answered{isRehearsal && ` · ${examGuideLabel(track, session.version)}`}</p>
+        <p>{complete} of {items.length} answered{(isRehearsal || session.mode === "reassessment") &&
+          ` · ${session.snapshot?.label ?? examGuideLabel(track, session.version)}`}</p>
       </div>
       <div className="academy-session-layout">
         <section className="academy-panel academy-question" aria-labelledby="question-title">
@@ -150,8 +155,13 @@ export function PracticeSession({ track, session, error, busy, onMove, onChoose,
   );
 }
 
-function ReviewItem({ track, entry, index, answers }: { track: Pick<Track, "domains">; entry: PracticeItem; index: number; answers: string[] }) {
-  const [label, url] = sources[entry.source];
+function ReviewItem({ track, entry, index, answers, reference, report, onPractice }: {
+  track: Pick<Track, "domains">; entry: PracticeItem; index: number; answers: string[];
+  reference?: readonly [label: string, url: string];
+  report?: ReactNode;
+  onPractice: () => void;
+}) {
+  const [label, url] = reference ?? sources[entry.source];
   const correct = isCorrect(entry, answers);
   return (
     <details className="academy-review-item">
@@ -173,6 +183,10 @@ function ReviewItem({ track, entry, index, answers }: { track: Pick<Track, "doma
           })}
         </ul>
         <ExternalLink href={url}>{label}</ExternalLink>
+        {!correct && <button type="button" className="academy-button text" onClick={onPractice}>
+          Practice this skill <ArrowRight size={15} aria-hidden="true" />
+        </button>}
+        {report}
       </div>
     </details>
   );
@@ -183,29 +197,34 @@ export function PracticeReview({ track, attempt, due, onBack, onDomain }: {
   attempt: Attempt;
   due: number | null;
   onBack: () => void;
-  onDomain: (domain: number) => void;
+  onDomain: (domain: number, objective?: string) => void;
 }) {
   const items = sessionItems(track, attempt);
   const scored = items.filter((entry) => !entry.pilot);
   const count = score(scored, attempt.answers);
-  const blueprint = rehearsalBlueprint(track, attempt.version);
+  const blueprint = attempt.snapshot ?? rehearsalBlueprint(track, attempt.version);
+  const isTimedEvidence = attempt.mode === "assessment" || attempt.mode === "reassessment";
+  const references = new Map(attempt.snapshot?.items.map(({ id, reference }) => [id, reference]));
   const incorrect = scored.find((entry) => !isCorrect(entry, attempt.answers[entry.id] ?? []));
   return (
     <main className="academy-width academy-workspace">
       <button className="academy-back" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back to pathway</button>
       <div className="academy-workspace-title">
-        <p className="academy-kicker">{modeLabel(track, attempt)} · {dateFormat.format(attempt.submittedAt)}{attempt.mode === "assessment" && ` · ${examGuideLabel(track, attempt.version)}`}</p>
-        <h1>{attempt.mode === "assessment" ? "Rehearsal results" : "Practice results"}</h1>
+        <p className="academy-kicker">{modeLabel(track, attempt)} · {dateFormat.format(attempt.submittedAt)}{isTimedEvidence &&
+          ` · ${attempt.snapshot?.label ?? examGuideLabel(track, attempt.version)}`}</p>
+        <h1>{attempt.mode === "assessment" ? "Rehearsal results" : attempt.mode === "reassessment" ? "Reassessment results" : "Practice results"}</h1>
         <p className="academy-result-score"><strong>{count} / {scored.length}</strong> correct</p>
         {due && attempt.mode === "mixed" && <p>Seven-day follow-up available {dueLabel(due)}.</p>}
       </div>
-      {attempt.mode === "assessment" && <section className="academy-panel academy-assessment-domains" aria-label="Rehearsal results by domain">
+      {isTimedEvidence && <section className="academy-panel academy-assessment-domains" aria-label="Assessment results by domain">
         <h2>Results by domain</h2>
         <p>Raw results for this form. Anthropic reports a separate scaled score on the official exam.</p>
+        <p>{attempt.snapshot ? "Questions, choices, and review notes are saved as delivered." :
+          "This earlier attempt saved your answers. Review shows the questions currently linked to the form."}</p>
         <p>{attempt.priorExposure === undefined ? "This saved attempt predates question exposure tracking."
           : attempt.priorExposure.length === 0 ? "Every question was fresh when you started."
             : `${attempt.priorExposure.length} of ${items.length} questions had been seen when you started.`}</p>
-        <dl>{blueprint.domains.map(({ id, title }) => {
+        <dl>{blueprint.domains.filter(({ id }) => attempt.mode !== "reassessment" || id === attempt.domain).map(({ id, title }) => {
           const group = scored.filter((item) => itemDomain(item) === id);
           return <div key={id}><dt>{title}</dt><dd>{score(group, attempt.answers)}/{group.length}</dd></div>;
         })}</dl>
@@ -215,7 +234,13 @@ export function PracticeReview({ track, attempt, due, onBack, onDomain }: {
           <h2 id="answer-review">Answer review</h2>
           {incorrect && <button className="academy-button secondary" onClick={() => onDomain(itemDomain(incorrect))}>{attempt.version === decemberVersion ? "Review a missed domain" : "Practice a missed domain"} <ArrowRight size={16} aria-hidden="true" /></button>}
         </div>
-        {items.map((entry, index) => <ReviewItem key={entry.id} track={blueprint} entry={entry} index={index} answers={attempt.answers[entry.id] ?? []} />)}
+        {items.map((entry, index) => <ReviewItem key={entry.id} track={blueprint} entry={entry} index={index}
+          answers={attempt.answers[entry.id] ?? []} reference={references.get(entry.id)}
+          onPractice={() => onDomain(itemDomain(entry), entry.objective)} report={
+            <QuestionReport trackId={track.id} version={attempt.version ?? "july-2026"} itemId={entry.id}
+              revision={attempt.snapshot?.id ?? evidenceFingerprint(entry)}
+              form={attempt.mode === "reassessment" ? "reassessment" : attempt.form} />
+          } />)}
       </section>
     </main>
   );

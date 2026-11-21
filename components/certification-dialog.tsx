@@ -19,18 +19,21 @@ import { missionFollowupAt, missionPreparationSteps, missionQuestions, missionFo
 import type { MissionRecord } from "../lib/claude/pathway";
 import { lensForMission } from "../lib/claude/assignment-lens";
 import { assignmentOutcome, hasAssignmentWork, proofPaths } from "../lib/claude/assignment-work";
-import { assignments, isCityAssignment } from "../lib/claude/assignments";
 import { replayMission } from "../lib/claude/missions";
 import type { Mission } from "../lib/claude/missions";
 import { tracks, trackHref, trackTitle } from "../lib/claude/blueprints";
+import { decemberVersion, examGuideLabel, rehearsalBlueprint } from "../lib/claude/december-blueprints";
+import { missionGuideCases } from "../lib/claude/curriculum/city-guide";
 import { missionExperiences } from "../lib/claude/mission-experiences";
 import { places } from "../lib/world";
 import { objectiveTitle } from "../lib/claude/practice";
 import { sources } from "../lib/claude/items";
 import { MissionFollowup, MissionTransfer } from "./academy/mission-workbench";
-import { ExternalLink } from "./academy/chrome";
 import { caseworkFor } from "../lib/claude/cases";
+import { assignmentDebriefs } from "../lib/claude/cases/debriefs";
 import { replayCasework } from "../lib/claude/casework";
+import { evidenceFingerprint } from "../lib/claude/evidence-snapshot";
+import { QuestionReport } from "./academy/question-report";
 
 export type MissionCertificationPage = "mission-debrief" | "mission-check" | "mission-followup";
 export type CertificationPage = "pathway" | "debrief" | CheckStage | "previous-first" | "previous-followup" |
@@ -321,10 +324,22 @@ function WorkDebrief({ missionId, work }: { missionId: string; work?: MissionRec
   }
 }
 
-function MissionDebrief({ mission, record, complete, onComplete, onChange }: {
+function DebriefLesson({ missionId }: { missionId: string }) {
+  const lesson = assignmentDebriefs[missionId];
+  if (!lesson) return null;
+  return <section className="mission-debrief-lesson" aria-label="Assignment and technical lesson">
+    <section><h4>What happened in the assignment</h4><p>{lesson.observation}</p></section>
+    <section><h4>How the real system works</h4><p>{lesson.implementation}</p></section>
+    <section><h4>What to look for on the exam</h4><p>{lesson.transfer}</p></section>
+    <p className="mission-debrief-citation">References · <cite>{lesson.references.map((key) => sources[key][0]).join(" · ")}</cite></p>
+  </section>;
+}
+
+function MissionDebrief({ mission, record, complete, currentGuide, onComplete, onChange }: {
   mission: Mission;
   record?: MissionRecord;
   complete: boolean;
+  currentGuide: boolean;
   onComplete: () => void;
   onChange: () => void;
 }) {
@@ -333,24 +348,24 @@ function MissionDebrief({ mission, record, complete, onComplete, onChange }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
   const replay = mission.kind === "workbench" && record?.choices ? replayMission(mission, record.choices) : [];
-  const original = mission.kind === "original" && isCityAssignment(mission.track) ? assignments[mission.track] : null;
   const exercise = caseworkFor(mission.id);
   const savedExercise = exercise && record?.casework ? replayCasework(exercise, record.casework, true) : null;
+  const companionCases = currentGuide ? missionGuideCases(track.id, mission.id) : [];
+  const currentBlueprint = rehearsalBlueprint(track, decemberVersion);
 
   return <>
     <div className="certification-intro">
       <p className="small-label">Technical debrief · {mission.title}</p>
       <h3>What the assignment teaches</h3>
-      <p>{record?.work ? assignmentOutcome(record.work) : exercise ? exercise.opening : mission.specialist || mission.brief}</p>
+      {record?.work && <p>{assignmentOutcome(record.work)}</p>}
     </div>
     {!complete && <p>Your replay results will appear here once you save an outcome.</p>}
-    {exercise && <div className="mission-debrief-results">
-      {savedExercise && savedExercise.checks.map(({ name, evidence, effect }) => <section key={name}>
+    <DebriefLesson missionId={mission.id} />
+    {savedExercise && <div className="mission-debrief-results">
+      {savedExercise.checks.map(({ name, evidence, effect }) => <section key={name}>
         <h4>{name}</h4><p>{evidence}</p><p><strong>What your setup did</strong> · {effect}</p>
       </section>)}
-      <p>{exercise.debrief}</p>
     </div>}
-    {original && !exercise && <p>{original.debrief}</p>}
     {hasAssignmentWork(mission.id) && <WorkDebrief missionId={mission.id} work={record?.work} />}
     {!savedExercise && !record?.work && mission.kind === "workbench" && replay.length > 0 && <div className="mission-debrief-results">
       <h4>Your saved system decisions</h4>
@@ -373,20 +388,23 @@ function MissionDebrief({ mission, record, complete, onComplete, onChange }: {
       </section>)}
     </div>}
     <section className="mission-exam-map">
-      <h4>How this assignment maps to the exam</h4>
-      <p>The exam-style check uses a different scenario to test the same published objectives.</p>
-      <ul className="mission-mapping">{questions.map((question) => {
-        const [label, url] = sources[question.source];
-        return <li key={question.id}>
-          <strong>Objective {question.objective}: {objectiveTitle(track, question)}</strong>
-          {exercise && <small>{exercise.objectives.includes(question.objective) ? "Used in the workbench" : "Explained here and tested in the exam-style check"}</small>}
-          {hasAssignmentWork(mission.id) && mission.kind === "workbench" && <p>{mission.decisions.find(({ objective }) => objective === question.objective)?.station} → {question.scenario}</p>}
-          <p>{skillNote(track.id, question.objective)}</p>
-          <p>{question.correct.length === 1 ? "Single response · choose one" : "Multiple response · choose two"}</p>
-          <ExternalLink href={url}>{label}</ExternalLink>
-        </li>;
-      })}</ul>
-      <ExternalLink href={track.guide}>Official {track.role} {track.level} exam guide</ExternalLink>
+      <h4>Objectives in this assignment’s exam-style check</h4>
+      <p>{examGuideLabel(track)} · The check asks you to apply these decisions to new cases.</p>
+      <ul className="mission-mapping">{questions.map((question) => <li key={question.id}>
+        <strong>{question.objective} · {objectiveTitle(track, question)}</strong>
+        {exercise && <small>{exercise.objectives.includes(question.objective) ? "Practiced in the workbench" : "Related exam skill"}</small>}
+        {hasAssignmentWork(mission.id) && mission.kind === "workbench" && <p>{mission.decisions.find(({ objective }) => objective === question.objective)?.station} → {question.scenario}</p>}
+        <p>{skillNote(track.id, question.objective)}</p>
+        <cite>{sources[question.source][0]}</cite>
+      </li>)}</ul>
+      {companionCases.length > 0 && <section className="mission-guide-companions" aria-label="December objectives at this station">
+        <h4>December practice in this room</h4>
+        <p>The current guide cases at this station apply these objectives.</p>
+        <ul>{companionCases.map(([id]) => {
+          const [domain, position] = id.split(".").map(Number);
+          return <li key={id}>{id} · {currentBlueprint.domains.find(({ id: value }) => value === domain)?.objectives[position - 1]}</li>;
+        })}</ul>
+      </section>}
     </section>
     {!record?.debriefSeen ? <button className="button button-primary" type="button" disabled={saving} onClick={async () => {
       setSaving(true);
@@ -404,7 +422,8 @@ function Debrief({ onContinue, seen, saving, error }: { onContinue: () => void; 
   return (
     <>
       <h3>City Dispatch technical debrief</h3>
-      <p><strong>CCAR-F task 2.2</strong> · Structured errors for MCP tools. The exam check presents a different tool contract and asks you to choose recovery actions from the result and failure type.</p>
+      <p><strong>CCAR-F task 2.2</strong> · Structured errors for MCP tools</p>
+      <DebriefLesson missionId="dispatch-lookup" />
       <p>Compare the completed search with ticket T-17. These examples show the result body of an MCP tool call.</p>
       <div className="result-examples">
         {lookupResults.map(({ title, action, result }) => (
@@ -415,15 +434,12 @@ function Debrief({ onContinue, seen, saving, error }: { onContinue: () => void; 
           </section>
         ))}
       </div>
-      <p>MCP uses <code>isError</code> to signal a tool execution error. City Dispatch defines <code>errorCategory</code> and <code>isRetryable</code> in <code>structuredContent</code> to guide recovery. The text block carries the same JSON for clients that read text. An unknown tool can produce a JSON-RPC error. If the MCP connection itself drops, the client may receive no tool result.</p>
+      <p>Dispatch includes JSON in a text block for clients that read text. A JSON-RPC protocol error can occur when the requested tool name is unknown.</p>
       <dl className="error-reference">
         {otherErrors.map(({ title, example, action }) => (
           <div key={title}><dt>{title}</dt><dd>{example} {action}</dd></div>
         ))}
       </dl>
-      <div className="certification-sources">
-        <a href={architectFoundations.specification} target="_blank" rel="noreferrer">MCP specification</a>
-      </div>
       <button className="button button-primary" type="button" onClick={onContinue} disabled={saving}>
         {saving ? "Saving…" : seen ? "Return to certification practice" : "Mark debrief complete"} <ArrowRight size={16} aria-hidden="true" />
       </button>
@@ -545,6 +561,7 @@ function CheckReview({ check, attempt }: { check: SkillCheck; attempt: SkillAtte
               <p className="submitted-answer"><strong>Your {response.length === 1 ? "response" : "responses"}</strong> · {options.filter(([value]) => response.includes(value)).map(([, label]) => label).join(" ")}</p>
               {!correctResponse && <p><strong>Correct {correct.length === 1 ? "response" : "responses"}</strong> · {options.filter(([value]) => correct.includes(value)).map(([, label]) => label).join(" ")}</p>}
               <p>{explanation}</p>
+              <QuestionReport trackId="architect-foundations" version="july-2026" itemId={`${check.id}.${id}`} revision={evidenceFingerprint(question)} />
             </li>
           );
         })}
@@ -553,7 +570,7 @@ function CheckReview({ check, attempt }: { check: SkillCheck; attempt: SkillAtte
   );
 }
 
-export function CertificationDialog({ dialog, page: requestedPage, progress, shiftComplete, sessionOnly, mission, missionRecord, missionComplete, onNavigate, onClose, onDispatch, onMissionStart, onMissionChange, onLens, onSubmit, onDispatchDebrief, startStudy, studyPending, studyError, retryStudy, studyDueAt, browserStudy }: {
+export function CertificationDialog({ dialog, page: requestedPage, progress, shiftComplete, sessionOnly, mission, missionRecord, missionComplete, currentGuide, onNavigate, onClose, onDispatch, onMissionStart, onMissionChange, onLens, onSubmit, onDispatchDebrief, startStudy, studyPending, studyError, retryStudy, studyDueAt, browserStudy }: {
   dialog: RefObject<HTMLDialogElement | null>;
   page: CertificationPage | null;
   progress: CertificationProgress;
@@ -562,6 +579,7 @@ export function CertificationDialog({ dialog, page: requestedPage, progress, shi
   mission?: Mission | null;
   missionRecord?: MissionRecord;
   missionComplete?: boolean;
+  currentGuide: boolean;
   onNavigate: (page: CertificationPage) => void;
   onClose: () => void;
   onDispatch: () => void;
@@ -681,7 +699,7 @@ export function CertificationDialog({ dialog, page: requestedPage, progress, shi
           <CheckForm check={followupCheck} stage="followup" onStart={startStudy}
             onSubmit={(answers) => onSubmit("followup", answers)} />
         </>}
-        {page === "mission-debrief" && mission && <MissionDebrief mission={mission} record={missionRecord} complete={!!missionComplete}
+        {page === "mission-debrief" && mission && <MissionDebrief mission={mission} record={missionRecord} complete={!!missionComplete} currentGuide={currentGuide}
           onComplete={() => onNavigate("pathway")} onChange={onMissionChange ?? (() => {})} />}
         {mission && <div key={mission.id} hidden={page !== "mission-check"}>
           <MissionTransfer mission={mission} record={missionRecord} onChange={onMissionChange ?? (() => {})} />

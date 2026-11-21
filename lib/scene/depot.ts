@@ -50,6 +50,43 @@ function planter(kit: ModelKit, parent: THREE.Object3D, x: number, z: number) {
   kit.foliage(parent, [x + .18, .71, z], [.43, .55, .38], "#7ba75c");
 }
 
+function dispatchWayfinding(kit: ModelKit, room: THREE.Group) {
+  const frame = kit.material("#496c66");
+  const contrast = kit.material("#f1dcad");
+  const brass = kit.material("#c69e5c");
+  const stripe = kit.material("#99a798");
+  const apron = kit.material("#7a8d80", "stone");
+  // Floor trails connect the existing authored counter, lookup terminal and packing bench.
+  for (const [x, z, width, depth] of [[-4.48, 2.91, 3.52, .86], [4.05, -1.58, 2.69, 1.15], [3.78, 3.61, 3.67, .76]]) {
+    kit.ground(room, x, z, width, depth, apron, .015);
+    for (const end of [-1, 1]) kit.ground(room, x, z + end * (depth / 2 - .026), width, .031, stripe, .018);
+  }
+  const labels = [
+    { x: -4.57, z: 1.04, text: "SUPPORT", width: 1.52 },
+    { x: 4.05, z: -2.71, text: "LOOKUP", width: 1.52 },
+    { x: 3.61, z: 2.14, text: "DISPATCH", width: 1.74 },
+  ];
+  for (const { x, z, text, width } of labels) {
+    const sign = kit.group(room, [x, 2.90, z]);
+    kit.box(sign, [0, .43, 0], [.057, .84, .061], frame, true);
+    kit.box(sign, [0, 0, 0], [width + .11, .45, .118], frame, true);
+    kit.sign(sign, text, [0, 0, .067], width, ["#496c66", "#f6e3af"]);
+    kit.box(sign, [0, -.22, .064], [width, .031, .018], brass);
+  }
+  kit.box(room, [3.31, 2.57, -4.73], [3.33, .94, .15], frame, true);
+  kit.box(room, [3.31, 2.50, -4.632], [3.18, .73, .078], kit.material("#334f4c"), true);
+  kit.sign(room, "SUPPORT QUEUE", [3.31, 2.84, -4.582], 1.42, ["#496c66", "#f6e3af"]);
+  for (let slot = 0; slot < 4; slot++) {
+    const x = 2.23 + slot * .72;
+    kit.box(room, [x, 2.45, -4.573], [.53, .30, .030], frame, true);
+    kit.box(room, [x, 2.20, -4.566], [.32, .029, .028], contrast, true);
+  }
+  for (const x of [-7.05, 7.35]) {
+    kit.box(room, [x, .55, 4.63], [.22, 1.08, .25], frame, true);
+    for (const y of [.77, .92]) kit.box(room, [x, y, 4.633], [.24, .083, .263], brass, true);
+  }
+}
+
 export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state: ModelState) => void): Environment {
   const depot = new THREE.Group();
   const fixtureFallback = new THREE.Group();
@@ -160,6 +197,10 @@ export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state
   kit.tree(depot, 9.03, 4.62, 1.03, 45);
   kit.tree(depot, 10.0, -6.98, 1.13, 9);
   for (const x of [-6.8, -5.9, -5.2, 6.1, 7.2]) kit.shrub(depot, x, 5.77, 1.2, true);
+  dispatchWayfinding(kit, room);
+  const lamp = new THREE.PointLight("#fff0ca", 20, 11, 2);
+  lamp.position.set(3.55, 4.25, -1.8);
+  scene.add(lamp);
   kit.batch(depot);
   kit.batch(fixtureFallback);
   let model: GLTF | null = null;
@@ -201,6 +242,8 @@ export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state
   const indicator = kit.box(queue, [.403, -.052, .043], [.144, .11, .122], kit.material("#d9a443"), true);
   const normalStatus = kit.material("#66ab84");
   const busyStatus = kit.material("#d9a443");
+  const idleStatus = kit.material("#658382");
+  const wallQueue = Array.from({ length: 4 }, (_, slot) => kit.box(scene, [2.23 + slot * .72, 2.76, -4.554], [.32, .145, .026], idleStatus, true));
 
   const landmarks = [
     landmark("support", -4.45, 1.43, 4.0, 1.8, 1.67),
@@ -222,6 +265,7 @@ export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state
       const visibleTrays = Math.max(0, Math.min(trays.length, Math.ceil(hours / 4)));
       trays.forEach((tray, index) => { tray.visible = index < visibleTrays; });
       indicator.material = visibleTrays > 2 ? busyStatus : normalStatus;
+      wallQueue.forEach((tile, slot) => { tile.material = slot < visibleTrays ? busyStatus : normalStatus; });
     },
   };
 }

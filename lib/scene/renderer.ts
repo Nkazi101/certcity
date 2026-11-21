@@ -7,8 +7,10 @@ import { ModelKit } from "./model-kit";
 import { lightCity } from "./city-paint";
 import { districtCamera } from "./districts";
 import type { DistrictId } from "./districts";
-import type { Landmark } from "./sites";
+import type { Landmark, MissionRoomReplay } from "./sites";
+import { roomAtmosphere } from "./room-architecture";
 
+export type { MissionRoomReplay } from "./sites";
 export type SceneKind = "city" | "depot" | "mission";
 export type WorldControls = {
   zoom: (factor: number) => void;
@@ -18,6 +20,7 @@ export type WorldControls = {
   focusOliveStreet: () => void;
   setWorkload: (hours: number) => void;
   setAssignmentComplete: (complete: boolean) => void;
+  setMissionReplay: (replay: MissionRoomReplay | null, preview?: HTMLCanvasElement | null) => void;
   refreshMarkers: () => void;
   select: (id: string | null, fromMarker?: boolean) => void;
   dispose: () => void;
@@ -34,6 +37,7 @@ export function mountWorld(
 ): WorldControls {
   const city = kind === "city";
   const depot = kind === "depot";
+  const atmosphere = kind === "mission" ? roomAtmosphere(missionRoom?.kind ?? "office") : undefined;
   const canvasRenderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   const canvas = canvasRenderer.domElement;
   canvas.setAttribute("aria-hidden", "true");
@@ -41,7 +45,7 @@ export function mountWorld(
   canvasRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
   canvasRenderer.outputColorSpace = THREE.SRGBColorSpace;
   canvasRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-  canvasRenderer.toneMappingExposure = city ? 1.04 : 1.11;
+  canvasRenderer.toneMappingExposure = city ? 1.04 : atmosphere ? 1.03 : 1.07;
   canvasRenderer.shadowMap.enabled = true;
   canvasRenderer.shadowMap.autoUpdate = !city;
   canvasRenderer.shadowMap.type = THREE.PCFShadowMap;
@@ -49,9 +53,9 @@ export function mountWorld(
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#a4bd70");
-  const ambient = new THREE.HemisphereLight("#fff4de", "#90a28a", 1.62);
-  const sun = new THREE.DirectionalLight("#ffe9c7", 2.48);
-  const bounce = new THREE.DirectionalLight("#c4e3ff", .54);
+  const ambient = new THREE.HemisphereLight(atmosphere?.sky ?? "#fff4de", atmosphere?.shade ?? "#90a28a", atmosphere ? 1.50 : 1.62);
+  const sun = new THREE.DirectionalLight(atmosphere?.sky ?? "#ffe9c7", atmosphere ? 1.94 : 2.48);
+  const bounce = new THREE.DirectionalLight("#c4e3ff", atmosphere ? .67 : .54);
   sun.position.set(-28, 42, 19);
   bounce.position.set(24, 16, -25);
   if (city) lightCity(scene, ambient, sun);
@@ -120,7 +124,7 @@ export function mountWorld(
   const pointerPosition = new THREE.Vector2();
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let widthMinimum = city ? startDistrict.width : kind === "mission" ? 19.5 : 21.5;
-  const heightMinimum = city ? 35.5 : kind === "mission" ? 15.8 : 16.2;
+  const heightMinimum = city ? 35.5 : kind === "mission" ? 16.85 : 16.2;
   let pitch = city ? startDistrict.pitch : .695;
   let desiredPitch = pitch;
   const radius = 78;
@@ -133,6 +137,11 @@ export function mountWorld(
   let height = 1;
   let verticalSpan = heightMinimum;
   let selected: string | null = null;
+  let missionReplay: MissionRoomReplay | null = null;
+  let replayPreview: HTMLCanvasElement | null = null;
+  let replayPreviewUntil = 0;
+  let lastReplayPreview = 0;
+  let capturedSettledReplay = false;
   let lastFrame = 0;
   let startTime: number | null = null;
   let lastActorTick = 0;
@@ -175,16 +184,16 @@ export function mountWorld(
   function resize() {
     width = Math.max(1, host.clientWidth);
     height = Math.max(1, host.clientHeight);
-    if (city) sizeBuffer();
-    else canvasRenderer.setSize(width, height, false);
+    sizeBuffer();
     const nextPortrait = width / height < .72;
-    if (city && portrait !== nextPortrait) {
+    if (portrait !== nextPortrait) {
       portrait = nextPortrait;
-      if (framing === "district") frameDistrict();
-      else if (framing === "olive") frameOliveStreet();
+      if (city && framing === "district") frameDistrict();
+      if (city && framing === "olive") frameOliveStreet();
     }
+    if (kind === "mission") widthMinimum = portrait ? 17.35 : 19.5;
     fitCamera();
-    if (kind === "mission" && selected) frameMissionStation();
+    if (kind === "mission" && (selected || framing === "district")) frameMissionStation();
   }
 
   function frameMissionStation() {
@@ -192,7 +201,10 @@ export function mountWorld(
     const open = host.parentElement?.dataset.stationOpen === "true";
     const point = open ? environment.landmarks.find(({ id }) => id === selected) : undefined;
     if (!point) {
-      target.set(0, .72, .25);
+      const station = environment.landmarks.find(({ id }) => id === "work");
+      const focalX = portrait && station ? station.anchor.x * .37 : 0;
+      const focalZ = portrait && station ? station.anchor.z * .28 : 0;
+      target.set(focalX, portrait ? -.38 : .84, .28 + focalZ);
       desiredZoom = 1;
     } else {
       const mobile = width <= 800;
@@ -241,6 +253,50 @@ export function mountWorld(
     camera.zoom = zoom;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+  }
+
+  function captureReplay(cameraChanged: boolean, now: number) {
+    if (!missionReplay || !replayPreview?.isConnected || !canvas.width || !canvas.height) return;
+    const settled = reducedMotion.matches || now >= replayPreviewUntil - 530;
+    const finalCapture = settled && !capturedSettledReplay;
+    if (!cameraChanged && replayPreview.dataset.live === "true" &&
+      !finalCapture && (now > replayPreviewUntil || now - lastReplayPreview < 43)) return;
+    const station = environment.landmarks.find(({ id }) => id === "work");
+    const context = replayPreview.getContext("2d");
+    if (!station || !context || !replayPreview.width || !replayPreview.height) return;
+    projected.copy(station.anchor);
+    projected.y -= .36;
+    projected.project(camera);
+    const ratio = replayPreview.width / replayPreview.height;
+    const pixelRatio = canvasRenderer.getPixelRatio();
+    const previewRatio = Math.min(2.15, Math.sqrt(1800000 / (width * height)));
+    const sharpen = finalCapture && width <= 800 && previewRatio > pixelRatio;
+    const updateShadows = canvasRenderer.shadowMap.autoUpdate;
+    if (sharpen) {
+      // The settled picture can be sharper than the moving view without raising ongoing phone GPU work.
+      canvasRenderer.shadowMap.autoUpdate = false;
+      canvasRenderer.setDrawingBufferSize(width, height, previewRatio);
+      canvasRenderer.render(scene, camera);
+    }
+    try {
+      const cropWidth = Math.min(canvas.width, canvas.height * ratio, canvas.height / verticalSpan * zoom * 5.35);
+      const cropHeight = cropWidth / ratio;
+      const x = THREE.MathUtils.clamp((projected.x + 1) * canvas.width * .5 - cropWidth / 2, 0, canvas.width - cropWidth);
+      const y = THREE.MathUtils.clamp((1 - projected.y) * canvas.height * .5 - cropHeight * .51, 0, canvas.height - cropHeight);
+      context.drawImage(canvas, x, y, cropWidth, cropHeight, 0, 0, replayPreview.width, replayPreview.height);
+    } finally {
+      if (sharpen) {
+        canvasRenderer.setDrawingBufferSize(width, height, pixelRatio);
+        canvasRenderer.render(scene, camera);
+        canvasRenderer.shadowMap.autoUpdate = updateShadows;
+      }
+    }
+    replayPreview.dataset.live = "true";
+    lastReplayPreview = now;
+    if (finalCapture) {
+      capturedSettledReplay = true;
+      replayPreviewUntil = now;
+    }
   }
 
   function markerArea(origin: DOMRect) {
@@ -351,7 +407,7 @@ export function mountWorld(
       angle = THREE.MathUtils.lerp(angle, desiredAngle, ease);
       pitch = THREE.MathUtils.lerp(pitch, desiredPitch, ease);
     }
-    const animate = !reducedMotion.matches && now - lastActorTick >= 31;
+    const animate = !reducedMotion.matches && now - lastActorTick >= (!city && coarsePointer.matches ? 44 : 31);
     if (moving) environment.cameraNear?.(cameraTarget.x, cameraTarget.z);
     if (animate) {
       environment.update(elapsed);
@@ -365,12 +421,14 @@ export function mountWorld(
         canvasRenderer.shadowMap.needsUpdate = true;
         shadowsDirty = false;
       }
-      if (dirty || moving) {
+      const cameraChanged = dirty || moving;
+      if (cameraChanged) {
         pointCamera();
         positionMarkers();
       }
       dirty = false;
       canvasRenderer.render(scene, camera);
+      captureReplay(cameraChanged, now);
     }
     if (city && moving && sinceFrame < 95 && !reducedMotion.matches) adaptResolution(sinceFrame);
     if (moving || !reducedMotion.matches || dirty) schedule();
@@ -534,6 +592,7 @@ export function mountWorld(
     cancelAnimationFrame(frameId);
     frameId = 0;
     contextLost = true;
+    if (replayPreview) delete replayPreview.dataset.live;
     onContextState(false);
   }
 
@@ -545,6 +604,7 @@ export function mountWorld(
   }
 
   function onVisibility() {
+    if (reducedMotion.matches && missionReplay) environment.setMissionReplay?.(missionReplay, true);
     if (document.hidden) {
       cancelAnimationFrame(frameId);
       frameId = 0;
@@ -566,6 +626,12 @@ export function mountWorld(
   canvas.addEventListener("webglcontextrestored", onRestored);
   resize();
   pitch = desiredPitch;
+  if (kind === "mission" && !reducedMotion.matches) {
+    // Approach from the side door before settling on the work area.
+    cameraTarget.copy(target).add(new THREE.Vector3(-2.8, -.26, 1.92));
+    angle -= .15;
+    zoom = 1.28;
+  }
   environment.focusDistrict?.(initialDistrict);
   environment.cameraNear?.(target.x, target.z);
   environment.update(0);
@@ -577,9 +643,12 @@ export function mountWorld(
     reset() {
       if (city) frameDistrict();
       else {
-        target.set(0, kind === "mission" ? .72 : .43, .25);
-        desiredZoom = 1;
         desiredAngle = .78 + Math.round((angle - .78) / (Math.PI * 2)) * Math.PI * 2;
+        if (kind === "mission") frameMissionStation();
+        else {
+          target.set(0, .43, .25);
+          desiredZoom = 1;
+        }
       }
       invalidate();
     },
@@ -611,8 +680,22 @@ export function mountWorld(
       environment.setAssignmentComplete?.(complete);
       invalidate();
     },
+    setMissionReplay(replay, preview = null) {
+      if (!environment.setMissionReplay) return;
+      if (replayPreview && (replayPreview !== preview || !replay)) delete replayPreview.dataset.live;
+      if (replayPreview !== preview) capturedSettledReplay = false;
+      replayPreview = preview;
+      if (missionReplay?.kind !== replay?.kind || missionReplay?.token !== replay?.token) {
+        missionReplay = replay;
+        replayPreviewUntil = performance.now() + 1550;
+        lastReplayPreview = 0;
+        capturedSettledReplay = false;
+        environment.setMissionReplay(replay, reducedMotion.matches);
+      }
+      invalidate();
+    },
     refreshMarkers() {
-      if (kind === "mission") frameMissionStation();
+      if (kind === "mission" && (selected || framing === "district")) frameMissionStation();
       invalidate();
     },
     select(id, fromMarker = false) {
@@ -647,6 +730,7 @@ export function mountWorld(
     },
     dispose() {
       ready = false;
+      if (replayPreview) delete replayPreview.dataset.live;
       cancelAnimationFrame(frameId);
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);

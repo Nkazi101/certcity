@@ -5,19 +5,22 @@ import { landmark } from "./sites";
 import type { Environment } from "./sites";
 import type { AssignmentWorkId } from "../claude/assignment-work";
 import type { WorkLayout } from "../claude/cases/layouts";
-import type { RoomKind } from "../claude/mission-experiences";
-
-type Palette = { wall: string; trim: string; floor: string; wood: string; accent: string; metal: string };
+import type { MissionExperience, RoomKind } from "../claude/mission-experiences";
+import { roomArchitecture, roomAtmosphere } from "./room-architecture";
+import type { RoomPalette as Palette } from "./room-architecture";
+import { roomSavedArt, roomSceneArt } from "./room-scenes";
+import type { RoomStation } from "./room-scenes";
+import { buildRoomReplay } from "./room-replay";
 
 const palettes: Record<RoomKind, Palette> = {
-  archive: { wall: "#c7b993", trim: "#55796c", floor: "#ded2b4", wood: "#a97d55", accent: "#6b9278", metal: "#60756d" },
+  archive: { wall: "#c7b993", trim: "#55796c", floor: "#b18b60", wood: "#a97854", accent: "#6b9278", metal: "#60756d" },
   printshop: { wall: "#bd8064", trim: "#4c776a", floor: "#ddd3bb", wood: "#a8865d", accent: "#d4a75f", metal: "#60796f" },
-  kitchen: { wall: "#d0bd91", trim: "#58796c", floor: "#ded6c2", wood: "#aa7752", accent: "#b56d4a", metal: "#71847b" },
+  kitchen: { wall: "#b4c4b5", trim: "#58796c", floor: "#c5c7b4", wood: "#aa7752", accent: "#b56d4a", metal: "#71847b" },
   community: { wall: "#b2c2a0", trim: "#557969", floor: "#e0d9c3", wood: "#b48a62", accent: "#d5a555", metal: "#63766d" },
-  office: { wall: "#c2c9b8", trim: "#54766a", floor: "#ddd8c8", wood: "#a7815d", accent: "#7294a0", metal: "#60756e" },
+  office: { wall: "#a0b2b7", trim: "#58737f", floor: "#b4bbb6", wood: "#93988d", accent: "#7294a0", metal: "#607885" },
   workshop: { wall: "#bd9875", trim: "#4e7568", floor: "#d9cfb8", wood: "#9f7651", accent: "#cb9c4f", metal: "#5d716c" },
-  market: { wall: "#d1bd8e", trim: "#517564", floor: "#dfd3b8", wood: "#ad8057", accent: "#c78045", metal: "#63766d" },
-  school: { wall: "#c4c79f", trim: "#55796d", floor: "#e3dac4", wood: "#b08b64", accent: "#7297a0", metal: "#647a71" },
+  market: { wall: "#c99f72", trim: "#517564", floor: "#dfc891", wood: "#ad8057", accent: "#c78045", metal: "#63766d" },
+  school: { wall: "#bcc8c0", trim: "#607e87", floor: "#d4d5bb", wood: "#b08b64", accent: "#7297a0", metal: "#647a71" },
   courthouse: { wall: "#c4b69d", trim: "#4f7368", floor: "#ded7c7", wood: "#a87f59", accent: "#ba9a5b", metal: "#64756f" },
   dispatch: { wall: "#b97758", trim: "#527b70", floor: "#ded1af", wood: "#bd915e", accent: "#719799", metal: "#617c70" },
 };
@@ -96,12 +99,11 @@ function roomFeatures(kit: ModelKit, room: THREE.Group, palette: Palette, kind: 
       for (const x of [1.5, 3.2, 4.9]) kit.box(room, [x, .47, 2.45], [1.2, .12, .5], kit.material(palette.wood), true);
       break;
     case "office":
-      for (const [x, z] of [[-4.2, -2.7], [-.1, -2.7], [4, -2.7], [-2, 1.7], [2.2, 1.7]] as const) {
-        desk(kit, room, x, z, 2.5, 1.3, palette, .9);
-        monitor(kit, room, x, .96, z - .12, palette);
-      }
-      kit.box(room, [0, 1.68, -4.04], [5.5, 1.9, .16], kit.material("#e9dfca"), true);
-      for (let i = 0; i < 5; i++) kit.box(room, [-1.9 + i * .94, 1.7, -3.92], [.67, .92, .045], kit.material(i % 2 ? palette.accent : "#d5ba7e"), true);
+      desk(kit, room, 2.2, 1.7, 3.2, 1.45, palette, .9);
+      desk(kit, room, -.98, -.92, 3.3, 1.25, palette, .9);
+      monitor(kit, room, -.96, .96, -1.11, palette);
+      desk(kit, room, -4.95, .42, 2.0, 1.52, palette, .9);
+      shelf(kit, room, 6.62, .68, 1.3, palette, true);
       break;
     case "workshop":
       desk(kit, room, 0, .75, 6.1, 1.6, palette, .96);
@@ -118,13 +120,8 @@ function roomFeatures(kit: ModelKit, room: THREE.Group, palette: Palette, kind: 
     case "market":
       for (const [x, z] of [[-4.3, -1.2], [1.1, -1.2], [4.7, 1.55]] as const) {
         desk(kit, room, x, z, 3.2, 1.35, palette, .94);
-        for (let i = 0; i < 3; i++) {
-          const color = ["#bd7950", "#d5a84f", "#789457"][i];
-          kit.sphere(room, [x - .75 + i * .72, 1.27, z], [.38, .31, .37], kit.material(color));
-        }
       }
       shelf(kit, room, -4.9, -4.02, 2.6, palette, true);
-      kit.box(room, [3.2, 1.15, -4.02], [4.1, 2.0, .17], kit.material("#e7dcc1"), true);
       break;
     case "school":
       desk(kit, room, -3.55, -1.35, 4.0, 1.35, palette);
@@ -245,27 +242,37 @@ function stationEquipment(kit: ModelKit, room: THREE.Group, palette: Palette, su
   }
 }
 
-export type MissionRoom = { kind: RoomKind; room: string; missionId?: string; workId?: AssignmentWorkId; surface?: WorkLayout["kind"] };
+export type MissionRoom = {
+  kind: RoomKind;
+  room: string;
+  missionId?: string;
+  workId?: AssignmentWorkId;
+  surface?: WorkLayout["kind"];
+  interviews?: MissionExperience["interviews"];
+};
 
-export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, room: roomName, missionId, workId, surface }: MissionRoom): Environment {
+const roomResidents: Record<RoomKind, readonly [number, number, number, number]> = {
+  archive: [1.14, 1.34, 4.84, 1.28], printshop: [-3.72, 2.70, 1.60, 2.54],
+  kitchen: [-5.43, -.74, -2.93, -.28], community: [-4.66, .15, .42, 1.84],
+  office: [-1.08, -.18, 2.23, 2.90], workshop: [-1.6, 1.98, 2.50, 1.80],
+  market: [-1.37, -.47, 2.45, .13], school: [-4.16, .12, -1.33, .13],
+  courthouse: [-3.20, .13, 1.64, .09], dispatch: [-2.00, -.68, 1.62, -1.21],
+};
+
+const peopleColors = [
+  ["#bd864c", "#b67957", "#503932"], ["#718b88", "#c69572", "#493830"],
+  ["#a76555", "#73513f", "#302d2c"], ["#938593", "#cf9a78", "#6e4a3c"],
+  ["#56716e", "#ae7757", "#4e3c35"], ["#655f75", "#97674e", "#362f30"],
+] as const;
+
+export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, room: roomName, missionId, workId, surface, interviews }: MissionRoom): Environment {
   const palette = palettes[kind];
-  scene.background = new THREE.Color("#9eb28a");
+  const atmosphere = roomAtmosphere(kind);
+  scene.background = new THREE.Color(atmosphere.ground);
   const interior = new THREE.Group();
   scene.add(interior);
-  kit.box(interior, [0, .12, 0], [16, .3, 11], kit.material(palette.trim), true);
-  kit.ground(interior, 0, 0, 15.72, 10.72, kit.material(palette.floor, "pavers"), .28);
-  kit.box(interior, [-.2, .303, 3.74], [13.8, .028, 1.7], kit.material(palette.trim));
-  for (const z of [3.02, 4.46]) kit.box(interior, [-.2, .322, z], [13.55, .012, .055], kit.material("#d6c69a"));
-  kit.box(interior, [0, 2.14, -5.24], [15.8, 4.25, .3], kit.material(palette.wall, "brick"));
-  kit.box(interior, [-7.76, 2.14, -.1], [.3, 4.25, 10.0], kit.material(palette.wall, "brick"));
-  kit.box(interior, [0, 4.3, -5.22], [16.05, .22, .43], kit.material(palette.trim), true);
-  kit.box(interior, [-7.75, 4.3, -.1], [.43, .22, 10.05], kit.material(palette.trim), true);
-  kit.box(interior, [0, .45, -5.06], [15.8, .34, .11], kit.material(palette.trim), true);
-  kit.box(interior, [-7.57, .45, -.1], [.11, .34, 10.0], kit.material(palette.trim), true);
-  for (const x of [-6.2, -3.55, -.9, 1.75, 4.4, 7.05]) {
-    kit.box(interior, [x, 2.2, -5.02], [.14, 3.72, .2], kit.material(palette.trim), true);
-  }
-  for (const x of [-5.05, -1.72, 1.62, 4.96]) kit.window(interior, [x, 2.75, -5.015], 2.28, 1.68, 0, true);
+  kit.contactShadow(interior, -.23, .24, 19.8, 13.28, -.055);
+  roomArchitecture(kit, interior, kind, palette);
   kit.sign(interior, roomName.toUpperCase(), [0, 3.91, -5.012], 3.6, [palette.trim, "#f8edcf"]);
   roomFeatures(kit, interior, palette, kind);
   assignmentEquipment(kit, interior, palette, workId);
@@ -278,14 +285,12 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
   kit.sign(interior, "CASE FILE", [-5.72, .72, 4.004], 1.53, [palette.trim, "#f8edcf"]);
   const people = new THREE.Group();
   scene.add(people);
-  const residents = [
-    makePerson(kit, people, ["#d6a54f", "#b88360", "#5b4131"], .98, 3),
-    makePerson(kit, people, ["#6e99a0", "#bf8768", "#4a382d"], 1.02, 4),
-  ];
-  residents[0].person.position.set(-1.25, .31, 2.25);
-  residents[0].person.rotation.y = Math.PI - .12;
-  residents[1].person.position.set(3.65, .31, -.1);
-  residents[1].person.rotation.y = Math.PI + .18;
+  const residents = [0, 1].map((index) => {
+    const identity = interviews?.[index]?.id ?? kind + index;
+    const hash = Array.from(identity).reduce((total, letter) => Math.imul(total, 31) + letter.charCodeAt(0), 31) >>> 0;
+    const colors = peopleColors[hash % peopleColors.length];
+    return makePerson(kit, people, [...colors], .96 + (hash % 5) * .026, 1 + hash % 7, .94 + hash % 4 * .055);
+  });
   const workstations = {
     "kitchen-extract": [-4.45, -1.75, 4.35, 1.18, 1.5],
     "printworks-rules": [-3.6, 1.36, 3.6, 1.65, 1.65],
@@ -294,28 +299,29 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
     "printworks-stream": [1.15, 1.36, 3.6, 1.65, 1.65],
     "library-retrieval-architecture": [3.35, .2, 3.7, 1.35, 1.25],
   } as const;
-  const roomStations: Record<RoomKind, readonly [number, number, number, number, number]> = {
+  const roomStations: Record<RoomKind, RoomStation> = {
     archive: [3.35, .2, 3.7, 1.35, 1.25], printshop: [1.15, 1.36, 3.6, 1.65, 1.65],
     kitchen: [2.1, 1, 3.8, 1.55, 1.25], community: [-3.7, -1.3, 4.1, 1.35, 1.54],
-    office: [2.2, 1.7, 2.5, 1.3, 1.55], workshop: [0, .75, 6.1, 1.6, 1.25],
+    office: [2.2, 1.7, 3.2, 1.5, 1.55], workshop: [0, .75, 6.1, 1.6, 1.25],
     market: [1.1, -1.2, 3.2, 1.35, 1.54], school: [-3.55, -1.35, 4, 1.35, 1.54],
     courthouse: [-2.1, -1.2, 4.3, 1.15, 1.96], dispatch: [0, -2.2, 3.25, 1.2, 1.61],
   };
   const station = workId ? workstations[workId] : missionId === "supplier-invoices" ? workstations["kitchen-extract"] : roomStations[kind];
   const stationHeight = missionId === "supplier-invoices" || workId === "kitchen-extract" || kind === "courthouse" ? 1.51 : 1.03;
-  if (surface) stationEquipment(kit, interior, palette, surface, station[0], stationHeight, station[1]);
-  if (missionId === "market-bulletin") {
-    kit.sign(interior, "FRIDAY BULLETIN", [3.2, 1.9, -3.91], 2.65, [palette.trim, "#fff1d0"]);
-    for (const x of [2.25, 3.2, 4.15]) {
-      kit.box(interior, [x, 1.2, -3.915], [.65, .73, .025], paper, true);
-      for (const y of [1, 1.16, 1.32]) kit.box(interior, [x, y, -3.89], [.4, .032, .012], kit.material(palette.accent));
-    }
+  if (surface && surface !== "incident") stationEquipment(kit, interior, palette, surface, station[0], stationHeight, station[1]);
+  roomSceneArt(kit, interior, kind, palette, station, missionId);
+  const focusLight = new THREE.PointLight(atmosphere.sky, kind === "office" ? 13 : 17, 10, 2);
+  focusLight.position.set(station[0] + .37, 4.35, station[1] + 1.29);
+  scene.add(focusLight);
+  const positions = roomResidents[kind];
+  for (const [index, resident] of residents.entries()) {
+    const x = positions[index * 2], z = positions[index * 2 + 1];
+    resident.person.position.set(x, .31, z);
+    resident.person.rotation.y = Math.atan2(station[0] - x, station[1] - z);
   }
-  if (missionId === "regional-operations") {
-    kit.sign(interior, "INCIDENT W-19", [2.2, 2.86, -5.0], 2.25, [palette.trim, "#fff1d0"]);
-  }
+  if (kind === "office") residents[1].sit(.67);
   kit.batch(interior);
-  residents[1].person.position.set(Math.min(6.15, station[0] + station[2] * .5 + .7), .31, station[1] + 1.1);
+  const replayArt = buildRoomReplay(kit, scene, missionId, station, stationHeight);
   const points = [
     landmark("work", station[0], station[1], station[2], station[3], station[4]),
     landmark("evidence", evidenceDesk.x, evidenceDesk.z, evidenceDesk.width, 1, 1.16),
@@ -331,12 +337,8 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
     const green = kit.material("#698c70");
     const px = x + offset;
     const pz = z + .27;
-    if (workId === "kitchen-extract") {
-      for (const dx of [-.3, 0, .3]) {
-        kit.box(incoming, [px + dx, height + .055, pz], [.21, .08, .36], paper, true);
-      }
-      kit.box(finished, [px, height + .035, pz], [.78, .07, .47], green, true);
-      kit.box(finished, [px, height + .09, pz], [.54, .045, .34], paper, true);
+    if (roomSavedArt(kit, incoming, finished, station, missionId, height)) {
+      // The marked draft, invoice, or handoff is stored at its own station.
     } else if (workId === "printworks-rules") {
       kit.box(incoming, [px, height + .055, pz], [.55, .1, .42], paper, true);
       kit.box(finished, [px, height + .06, pz], [.63, .11, .47], green, true);
@@ -360,17 +362,30 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
       kit.box(finished, [px, height + .057, pz], [.56, .105, .55], kit.material("#b79d6b"), true);
       kit.box(finished, [px, height + .116, pz], [.37, .018, .14], paper, true);
     }
+    kit.batch(incoming);
+    kit.batch(finished);
     finished.visible = false;
+  }
+  let assignmentComplete = false;
+  let liveReplay = false;
+  function showWork() {
+    finished.visible = assignmentComplete && !liveReplay;
+    incoming.visible = !assignmentComplete && !liveReplay;
   }
   return {
     landmarks: points,
     setAssignmentComplete(complete) {
-      finished.visible = complete;
-      incoming.visible = !complete;
+      assignmentComplete = complete;
+      showWork();
     },
+    setMissionReplay: replayArt ? (replay, immediate) => {
+      liveReplay = replayArt.set(replay, immediate);
+      showWork();
+    } : undefined,
     update(time) {
-      residents[0].work(time * 2.3 + .2, kind === "kitchen" || kind === "market" ? "pack" : "general");
-      residents[1].work(time * 2.7 + 1.1, kind === "printshop" || kind === "office" ? "type" : "general");
+      replayArt?.update();
+      residents[0].work(time * 2.3 + .2, kind === "market" || kind === "kitchen" ? "pack" : kind === "school" ? "type" : "general");
+      residents[1].work(time * 2.7 + 1.1, kind === "kitchen" ? "scan" : kind === "office" || kind === "printshop" || kind === "archive" ? "type" : "general");
     },
   };
 }

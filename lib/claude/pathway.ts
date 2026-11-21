@@ -5,7 +5,7 @@ import type { SkillAttempt } from "../certification-progress";
 import { skillChecks } from "../exam-practice";
 import { architectMissions } from "./architect-missions";
 import { associateMissions, developerMissions, professionalMissions } from "./role-missions";
-import { distinctSettings, missionTransfer } from "./mission-transfer";
+import { distinctSettings, missionExhibits, missionTransfer } from "./mission-transfer";
 import { tracks } from "./blueprints";
 import { cityChecks } from "./city-checks";
 import { readCityCheck } from "./city-progress";
@@ -78,6 +78,8 @@ export function missionQuestions(mission: Mission) {
     ? cityChecks[mission.track]
     : [...banks[mission.track].practice, ...banks[mission.track].followup, ...missionTransfer];
   return missionMappings(mission).map(({ itemId }) => {
+    const exhibit = missionExhibits.find(({ id }) => id === itemId);
+    if (exhibit) return exhibit;
     const item = items.find(({ id }) => id === itemId)!;
     return distinctSettings[itemId] ? { ...item, scenario: distinctSettings[itemId] } : item;
   });

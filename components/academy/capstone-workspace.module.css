@@ -491,6 +491,61 @@
   font-weight: 650;
 }
 
+.history {
+  padding: 12px;
+  border: 1px solid var(--case-edge);
+  border-radius: 8px;
+  background: var(--case-surface);
+}
+
+.history summary {
+  color: var(--case-accent);
+  cursor: pointer;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.history > details {
+  padding: 8px 0 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--case-edge);
+}
+
+.history summary span {
+  margin-inline-start: 8px;
+  color: var(--case-detail);
+  font-size: .82rem;
+  font-weight: 550;
+}
+
+.history .results {
+  background: #fffefa;
+}
+
+.archivedRecords {
+  margin: 12px 0;
+}
+
+.archivedRecords > details {
+  margin: 5px 0 0 14px;
+}
+
+.archivedRecords p,
+.archivedArtifact dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.archivedArtifact {
+  display: grid;
+  gap: 7px;
+  margin: 7px 0 16px;
+}
+
+.archivedArtifact dt {
+  font-weight: 680;
+}
+
 @media (max-width: 760px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);

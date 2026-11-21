@@ -3,9 +3,11 @@ import {
 } from "../progress-storage";
 import type { AccountSave } from "../progress-storage";
 import { dispatchProgressKey, parseDispatchPolicy } from "../shift";
+import { fitsProgressSave, mergeProgressValues } from "../progress-merge";
+import { rememberRecovery } from "../progress-recovery";
 import { getSupabase } from "./client";
 
-export type ProgressConflict = { key: string; cloudValue: string };
+export type ProgressConflict = { key: string; cloudValue: string; localOnly?: boolean };
 
 function encode(key: string, value: string) {
   return key === "certcity.city.active-assignment.v1" ? JSON.stringify(value) : value;
@@ -20,8 +22,10 @@ function decode(key: string, payload: string) {
 export function queueGuestProgress(userId: string) {
   let count = 0;
   for (const { key, value } of guestSaves()) {
-    if (readAccountSave(userId, key)) continue;
-    storeAccountSave(userId, key, { value, pending: { base: null } });
+    const existing = readAccountSave(userId, key);
+    const merged = existing ? mergeProgressValues(key, null, existing.value, value) : value;
+    if (merged === null || merged === existing?.value) continue;
+    storeAccountSave(userId, key, { value: merged, pending: { base: existing?.pending ? existing.pending.base : existing?.value ?? null } });
     announceCloudProgress(key);
     count++;
   }
@@ -29,14 +33,17 @@ export function queueGuestProgress(userId: string) {
 }
 
 export function resolveProgressConflict(userId: string, conflict: ProgressConflict, keepDevice: boolean) {
+  if (conflict.localOnly) return false;
   const entry = readAccountSave(userId, conflict.key);
-  if (!entry?.pending) return;
+  if (!entry?.pending) return false;
+  if (!rememberRecovery([{ key: conflict.key, value: entry.value }, { key: conflict.key, value: conflict.cloudValue }], userId)) return false;
   if (keepDevice) {
     storeAccountSave(userId, conflict.key, { value: entry.value, pending: { base: conflict.cloudValue } });
   } else {
     storeAccountSave(userId, conflict.key, { value: conflict.cloudValue });
     announceCloudProgress(conflict.key);
   }
+  return true;
 }
 
 export async function syncProgress(userId: string, signal: AbortSignal) {
@@ -66,7 +73,7 @@ export async function syncProgress(userId: string, signal: AbortSignal) {
     if (dispatchPolicy) keys.add(dispatchProgressKey);
     for (const key of keys) {
       signal.throwIfAborted();
-      const entry = readAccountSave(userId, key);
+      let entry = readAccountSave(userId, key);
       if (key === dispatchProgressKey && dispatchPolicy) {
         const value = JSON.stringify(dispatchPolicy);
         if (entry?.value !== value || entry.pending) storeAccountSave(userId, key, { value });
@@ -88,11 +95,22 @@ export async function syncProgress(userId: string, signal: AbortSignal) {
         continue;
       }
       if (cloudValue !== null && cloudValue !== entry.pending.base) {
-        conflicts.push({ key, cloudValue });
-        continue;
+        const merged = mergeProgressValues(key, entry.pending.base, entry.value, cloudValue);
+        if (merged === null) {
+          conflicts.push({ key, cloudValue });
+          continue;
+        }
+        entry = merged === cloudValue ? { value: merged } : { value: merged, pending: { base: cloudValue } };
+        storeAccountSave(userId, key, entry);
+        announceCloudProgress(key);
+        if (!entry.pending) continue;
       }
 
       const payload = encode(key, entry.value);
+      if (!fitsProgressSave(payload)) {
+        conflicts.push({ key, cloudValue: cloudValue ?? "", localOnly: true });
+        continue;
+      }
       const timeout = AbortSignal.any([signal, AbortSignal.timeout(8000)]);
       const saved = row
         ? await client!.from("learner_progress").update({ payload, revision: row.revision + 1 })

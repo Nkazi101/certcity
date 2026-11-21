@@ -1,15 +1,18 @@
 import { progressScope, readProgressItem, writeProgressItem } from "../progress-storage";
-import { rehearsalItems } from "./assessment/forms";
-import { examMinutes } from "./blueprints";
+import { domainSampleMinimum, reassessmentMinutes } from "./assessment/forms";
+import { examMinutes, julyGuideUrls } from "./blueprints";
 import type { Track } from "./blueprints";
-import { capstoneEvidence, validCapstoneAttempt } from "./capstones";
+import { capstoneEvidence, validCapstoneAttempt, validNewCapstoneAttempt } from "./capstones";
 import type { CapstoneAttempt } from "./capstones/model";
 import { bridges } from "./curriculum/bridges";
 import { objectiveCoverage } from "./curriculum";
 import { decemberBlueprint, decemberVersion, rehearsalBlueprint } from "./december-blueprints";
 import type { ExamVersion } from "./december-blueprints";
-import { itemDomain, score } from "./practice";
+import { itemDomain, score, sessionItems } from "./practice";
 import type { Attempt } from "./practice";
+import { readinessKey } from "./progress-keys";
+
+export { readinessKey } from "./progress-keys";
 
 export type ReadinessProgress = {
   version?: ExamVersion;
@@ -20,10 +23,6 @@ export type ReadinessProgress = {
 };
 
 export const emptyReadiness: ReadinessProgress = { bridge: null, guide: [], workshop: false, capstones: [] };
-
-export function readinessKey(track: Track) {
-  return `certcity.practice.${track.code}.readiness.v1`;
-}
 
 function isBridge(track: Track, choices: unknown): choices is number[] {
   return Array.isArray(choices) && choices.length === bridges[track.id].checkpoints.length &&
@@ -81,7 +80,7 @@ export async function updateReadiness(track: Track, fallback: ReadinessProgress,
       else if (!current.workshop) next = { ...current, workshop: true };
     } else {
       const { attempt } = action;
-      if (!validCapstoneAttempt(attempt) || attempt.trackId !== track.id) error = "Check the practical case before submitting again.";
+      if (!validNewCapstoneAttempt(attempt) || attempt.trackId !== track.id) error = "Check the practical case before submitting again.";
       else if (!current.capstones.some(({ id }) => id === attempt.id)) {
         const { transferDue } = capstoneEvidence(track.id, attempt.version, current.capstones, Date.now());
         if (attempt.stage === "transfer" && (transferDue === null || transferDue > attempt.submittedAt)) error = "The delayed case is still locked.";
@@ -105,28 +104,51 @@ export async function updateReadiness(track: Track, fallback: ReadinessProgress,
 
 export const rehearsalTarget = { overall: 80, domain: 67 };
 
-export function timedEvidence(track: Track, version: ExamVersion, attempts: readonly Attempt[]) {
+export function timedEvidence(track: Track, version: ExamVersion, attempts: readonly Attempt[], now = Date.now()) {
   const blueprint = rehearsalBlueprint(track, version);
-  return attempts.flatMap((attempt) => {
-    if (attempt.mode !== "assessment" || (attempt.version ?? "july-2026") !== version) return [];
-    const form = rehearsalItems(track.id, version, attempt.form);
-    if (!form.length || form.length !== attempt.itemIds.length || form.some(({ id }) => !attempt.itemIds.includes(id))) return [];
+  const guideIdentity = (url: string) => version === "july-2026" && url === julyGuideUrls[track.id] ? blueprint.guide : url;
+  const guideAttempts = attempts.filter((attempt) => (attempt.version ?? "july-2026") === version &&
+    attempt.submittedAt >= attempt.startedAt && attempt.submittedAt <= now);
+  const sorted = [...guideAttempts].sort((left, right) => left.submittedAt - right.submittedAt);
+  const focused = sorted.flatMap((attempt) => {
+    if (attempt.mode !== "reassessment" || attempt.domain === null || attempt.priorExposure?.length !== 0 ||
+        attempt.deadline !== attempt.startedAt + (attempt.snapshot?.minutes ?? reassessmentMinutes) * 60_000) return [];
+    const items = sessionItems(track, attempt);
+    if (items.length !== domainSampleMinimum || items.length !== attempt.itemIds.length ||
+        items.some((entry, index) => itemDomain(entry) !== attempt.domain || entry.pilot || entry.id !== attempt.itemIds[index])) return [];
+    return [{ attempt, items, guide: guideIdentity(attempt.snapshot?.guide ?? blueprint.guide), correct: score(items, attempt.answers) }];
+  });
+  return sorted.flatMap((attempt) => {
+    if (attempt.mode !== "assessment") return [];
+    const form = sessionItems(track, attempt);
+    if (form.length !== (attempt.snapshot?.guideCount ?? blueprint.count) || form.length !== attempt.itemIds.length ||
+        form.some((entry, index) => entry.id !== attempt.itemIds[index])) return [];
     const items = form.filter(({ pilot }) => !pilot);
-    const domains = blueprint.domains.map(({ id, title }) => {
+    const domains = (attempt.snapshot?.domains ?? blueprint.domains).map(({ id, title }) => {
       const group = items.filter((item) => itemDomain(item) === id);
-      return { id, title, correct: score(group, attempt.answers), total: group.length };
+      const correct = score(group, attempt.answers);
+      const total = group.length;
+      const supplemental = focused.findLast((entry) => entry.attempt.domain === id && entry.attempt.startedAt >= attempt.submittedAt &&
+        entry.guide === guideIdentity(attempt.snapshot?.guide ?? blueprint.guide) &&
+        entry.items.every(({ id: itemId }) => !attempt.itemIds.includes(itemId)));
+      const replacesPriorSample = supplemental && total >= domainSampleMinimum;
+      const sampleCorrect = (replacesPriorSample ? 0 : correct) + (supplemental?.correct ?? 0);
+      const sampleTotal = (replacesPriorSample ? 0 : total) + (supplemental?.items.length ?? 0);
+      const status = sampleTotal < domainSampleMinimum ? "insufficient"
+        : Math.round(100 * sampleCorrect / sampleTotal) >= rehearsalTarget.domain ? "met" : "below";
+      return { id, title, correct, total, sampleCorrect, sampleTotal, status, reassessed: !!supplemental } as const;
     });
     const correct = score(items, attempt.answers);
     const fresh = attempt.priorExposure?.length === 0;
-    const timed = attempt.deadline === attempt.startedAt + examMinutes * 60_000;
-    const met = fresh && timed && correct * 100 >= rehearsalTarget.overall * items.length && domains.every((domain) =>
-      domain.total > 0 && Math.round(100 * domain.correct / domain.total) >= rehearsalTarget.domain);
-    return [{ attempt, domains, correct, total: items.length, fresh, met }];
+    const timed = attempt.deadline === attempt.startedAt + (attempt.snapshot?.minutes ?? examMinutes) * 60_000;
+    const overallMet = fresh && timed && correct * 100 >= rehearsalTarget.overall * items.length;
+    const met = overallMet && domains.every(({ status }) => status === "met");
+    return [{ attempt, domains, correct, total: items.length, fresh, overallMet, met }];
   });
 }
 
 export function benchmarkEvidence(track: Track, version: ExamVersion, progress: ReadinessProgress, attempts: readonly Attempt[], now: number) {
-  const forms = timedEvidence(track, version, attempts);
+  const forms = timedEvidence(track, version, attempts, now);
   const timed = forms.find(({ met }) => met) ?? forms.filter(({ fresh }) => fresh).at(-1) ?? null;
   const practical = capstoneEvidence(track.id, version, progress.capstones, now);
   return { timed, practical, repeated: timed ? null : forms.at(-1) ?? null, met: !!(timed?.met && practical.capstone && practical.transfer) };

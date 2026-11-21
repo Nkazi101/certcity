@@ -10,13 +10,15 @@ require.extensions[".ts"] = (module, file) => {
   module._compile(code.outputText, file);
 };
 
-const { examMinutes, tracks } = require("../lib/claude/blueprints.ts");
+const { examMinutes, julyGuideUrls, tracks } = require("../lib/claude/blueprints.ts");
 const { decemberBlueprint, decemberVersion } = require("../lib/claude/december-blueprints.ts");
 const { rehearsalFormIds, rehearsalItems } = require("../lib/claude/assessment/forms.ts");
 const { skillNote } = require("../lib/claude/skill-notes.ts");
 const { runReference, referenceBaseline, runStream, streamBaseline, runRetrieval, retrievalBaseline } = require("../lib/claude/fieldwork.ts");
 const { assignmentChoices, hasAssignmentWork, validAssignmentWork } = require("../lib/claude/assignment-work.ts");
 const { caseworkFor, cityCasework } = require("../lib/claude/cases/index.ts");
+const { assignmentDebriefs } = require("../lib/claude/cases/debriefs.ts");
+const { missionExhibits, missionTransfer } = require("../lib/claude/mission-transfer.ts");
 const { workLayout } = require("../lib/claude/cases/layouts.ts");
 const { caseworkPassed, replayCasework, startingCase, validCaseDraft } = require("../lib/claude/casework.ts");
 const { places } = require("../lib/world.ts");
@@ -24,7 +26,7 @@ const { missionMappings, missionPassed, stationOptions } = require("../lib/claud
 const { acknowledgeReview, missingExpertise, missionCompleted, missionFollowupQuestions, missionPreparationSteps, missionQuestions, missionsFor, missionStoragePrefix, portfolio, portfolioEvidence, readPortfolio, saveCityCasework, saveMission, saveMissionDebrief, saveMissionDraft, saveMissionFollowup, saveMissionInterview, saveTransfer, unmetMissions } = require("../lib/claude/pathway.ts");
 const { missionExperiences } = require("../lib/claude/mission-experiences.ts");
 const { sources } = require("../lib/claude/items.ts");
-const { banks, createSession, domainEvidence, followupDue, itemDomain, rehearsalForms, responseComplete, score, sessionItems } = require("../lib/claude/practice.ts");
+const { banks, createSession, domainEvidence, followupDue, itemDomain, practiceBank, rehearsalForms, responseComplete, score, sessionItems } = require("../lib/claude/practice.ts");
 const { emptyProgress, progressKey, readProgress, updateProgress } = require("../lib/claude/progress.ts");
 const { assignments, isCityAssignment } = require("../lib/claude/assignments.ts");
 const { cityChecks } = require("../lib/claude/city-checks.ts");
@@ -91,9 +93,31 @@ for (const track of tracks) {
   console.log(`${track.code} · ${bank.practice.length} practice, ${bank.followup.length} follow-up, ${objectives.length} objectives`);
 }
 
+function checkAnswerLengths(questions, title) {
+  // A copyediting check for both character and word counts, sharing tied ranks.
+  for (const width of [(answer) => answer.length, (answer) => answer.split(/\s+/).length]) {
+    const ranks = [0, 0, 0, 0];
+    for (const question of questions) {
+      const lengths = question.options.map(([key, answer]) => ({ key, length: width(answer) }));
+      const correct = lengths.find(({ key }) => key === question.correct[0]).length;
+      const lower = lengths.filter(({ length }) => length < correct).length;
+      const ties = lengths.filter(({ length }) => length === correct).length;
+      for (let i = lower; i < lower + ties; i++) ranks[i] += 1 / ties;
+    }
+    assert.ok(Math.max(...ranks) <= questions.length / 2, `${title} answer length cue (${ranks.join(", ")})`);
+  }
+}
+
 function checkRehearsals() {
   const alternateIds = new Set();
   const alternatePrompts = new Set();
+  const reserveSeen = new Map();
+  const rememberReserve = (question) => {
+    assert.equal(reserveSeen.get(question.id) ?? question.prompt, question.prompt, "cross-guide reserve IDs refer to equivalent evidence");
+    reserveSeen.set(question.id, question.prompt);
+  };
+  const { domainSampleMinimum, reassessmentMinutes, selectReassessment } = require("../lib/claude/assessment/forms.ts");
+  const { recoveryBank } = require("../lib/claude/assessment/recovery-bank.ts");
   for (const track of tracks) {
     const updated = decemberBlueprint(track);
     const versions = updated ? ["july-2026", decemberVersion] : ["july-2026"];
@@ -105,14 +129,46 @@ function checkRehearsals() {
     ];
     const cityIds = new Set(cityItems.map(({ id }) => id));
     const cityPrompts = new Set(cityItems.map(({ prompt }) => prompt));
+    const originalAndAlternateIds = new Set(versions.flatMap((version) => ["original", "retest"]
+      .flatMap((label) => rehearsalItems(track.id, version, label).map(({ id }) => id))));
+    const originalAndAlternatePrompts = new Set(versions.flatMap((version) => ["original", "retest"]
+      .flatMap((label) => rehearsalItems(track.id, version, label).map(({ prompt }) => prompt))));
+    const allPractice = versions.flatMap((version) => {
+      const bank = practiceBank(track.id, version);
+      return [...bank.practice, ...bank.followup];
+    });
+    const practiceIds = new Set(allPractice.map(({ id }) => id));
+    const practicePrompts = new Set(allPractice.map(({ prompt }) => prompt));
     for (const version of versions) {
       const blueprint = version === decemberVersion ? updated : track;
+      const reserve = recoveryBank(track.id, version);
+      const reserveItems = [...reserve.full, ...reserve.focused];
+      assert.equal(new Set(reserveItems.map(({ id }) => id)).size, reserveItems.length, "focused and full reserves have separate items");
+      for (const question of reserveItems) {
+        assert.ok(!originalAndAlternateIds.has(question.id) && !practiceIds.has(question.id) && !cityIds.has(question.id), question.id);
+        assert.ok(!originalAndAlternatePrompts.has(question.prompt) && !practicePrompts.has(question.prompt) && !cityPrompts.has(question.prompt), question.id);
+        rememberReserve(question);
+      }
+      for (const domain of blueprint.domains) {
+        const domainPractice = createSession(track, "domain", domain.id, false, [], 10_000, cityIds, version);
+        const [firstQuestion] = sessionItems(track, domainPractice);
+        assert.ok(firstQuestion && !cityIds.has(firstQuestion.id) && !cityPrompts.has(firstQuestion.prompt),
+          `${track.code} ${version} domain ${domain.id} starts with an unseen question after the city checks`);
+        const focused = selectReassessment(track.id, version, domain.id, originalAndAlternateIds);
+        assert.equal(focused.length, domainSampleMinimum, `${track.code} ${version} domain ${domain.id}`);
+        assert.ok(focused.every((entry) => !entry.pilot && itemDomain(entry) === domain.id));
+        const timed = createSession(track, "reassessment", domain.id, true, [], 10_000, originalAndAlternateIds, version);
+        assert.deepEqual(timed.itemIds, focused.map(({ id }) => id));
+        assert.equal(timed.deadline, timed.startedAt + reassessmentMinutes * 60_000);
+        assert.deepEqual(timed.priorExposure, []);
+      }
       for (const label of rehearsalFormIds) {
         const form = rehearsalItems(track.id, version, label);
         const scored = form.filter(({ pilot }) => !pilot);
         const title = `${track.code} ${version} ${label}`;
         assert.equal(form.length, blueprint.count, `${title} item count`);
         assert.equal(scored.length, version === decemberVersion ? 60 : blueprint.count, title);
+        if (track.id === "architect-foundations") assert.equal(new Set(form.map(({ scenario }) => scenario)).size, 4, `${title} shared scenarios`);
         const objectives = blueprint.domains.flatMap((domain) => domain.objectives.map((_, index) => `${domain.id}.${index + 1}`));
         assert.deepEqual(new Set(scored.map(({ objective }) => objective)), new Set(objectives), title);
         assert.equal(new Set(form.map(({ id }) => id)).size, form.length, title);
@@ -123,24 +179,15 @@ function checkRehearsals() {
           else assert.ok(Math.abs(coverage - domain.weight * scored.length / 100) <= 1.1, `${title} domain ${domain.id} weighting`);
         }
         const singleResponse = form.filter(({ correct }) => correct.length === 1);
-        // A copyediting check. Guessing by any one length rank should not clear even half the single-response items.
-        for (const width of [(answer) => answer.length, (answer) => answer.split(/\s+/).length]) {
-          const ranks = [0, 0, 0, 0];
-          for (const question of singleResponse) {
-            const lengths = question.options.map(([key, answer]) => ({ key, length: width(answer) }));
-            const correct = lengths.find(({ key }) => key === question.correct[0]).length;
-            const lower = lengths.filter(({ length }) => length < correct).length;
-            const ties = lengths.filter(({ length }) => length === correct).length;
-            for (let i = lower; i < lower + ties; i++) ranks[i] += 1 / ties;
-          }
-          assert.ok(Math.max(...ranks) <= singleResponse.length / 2, `${title} answer length cue`);
-        }
-        if (label === "retest") {
+        checkAnswerLengths(singleResponse, title);
+        if (label !== "original") {
           const keyCounts = ["a", "b", "c", "d"].map((key) => singleResponse.filter(({ correct }) => correct[0] === key).length);
           assert.ok(Math.max(...keyCounts) - Math.min(...keyCounts) <= 1, `${title} single-response positions`);
         }
         for (const question of form) {
           assert.ok(!ids.has(question.id), question.id);
+          assert.ok(!practiceIds.has(question.id) && !cityIds.has(question.id) &&
+            !practicePrompts.has(question.prompt) && !cityPrompts.has(question.prompt), `${question.id} is independent of city and short practice`);
           assert.ok(sources[question.source] && question.explanation && question.context && question.prompt.endsWith("?"), question.id);
           assert.equal(question.options.length, question.correct.length + 3, question.id);
           assert.ok(question.correct.every((key) => question.options.some(([option]) => option === key)), question.id);
@@ -155,10 +202,52 @@ function checkRehearsals() {
         }
         const session = createSession(track, "assessment", null, false, [], 10_000, [], version, label);
         assert.equal(session.deadline, session.startedAt + examMinutes * 60_000);
-        assert.deepEqual(sessionItems(track, session), form);
+        assert.deepEqual(sessionItems(track, session).map(({ reference: _reference, ...entry }) => entry), form);
+        if (label === "recovery") {
+          assert.deepEqual(rehearsalItems(track.id, version, label, originalAndAlternateIds), form);
+          const used = new Set([...originalAndAlternateIds, ...form.map(({ id }) => id)]);
+          const next = rehearsalItems(track.id, version, label, used);
+          assert.ok(next.length === 0 || next.length === form.length && next.every(({ id }) => !used.has(id)),
+            "exhaustion cannot generate a partial or repeated recovery form");
+        }
       }
     }
+    if (updated) {
+      const earlierAttempts = rehearsalFormIds.map((label) => {
+        const draft = createSession(track, "assessment", null, true, [], 10_000, [], "july-2026", label);
+        return { ...draft, submittedAt: 25_000 };
+      });
+      assert.ok(rehearsalForms(track.id, decemberVersion, earlierAttempts).some(({ exposed, items }) => !exposed && items.length === updated.count),
+        "each revised guide keeps a fresh full route after all earlier rehearsals");
+    }
   }
+
+  const developer = tracks.find(({ id }) => id === "developer-foundations");
+  const first = createSession(developer, "assessment", null, true, [], 10_000, [], "july-2026");
+  const earlier = {
+    ...first,
+    submittedAt: 20_000,
+    answers: Object.fromEntries(sessionItems(developer, first).filter((entry) => itemDomain(entry) !== 4)
+      .map(({ id, correct }) => [id, correct])),
+  };
+  const domainFour = (attempts) => timedEvidence(developer, "july-2026", attempts)[0].domains.find(({ id }) => id === 4);
+  const before = domainFour([earlier]);
+  assert.deepEqual([before.status, before.correct, before.total], ["insufficient", 0, 1]);
+  const focused = createSession(developer, "reassessment", 4, true, [earlier], 30_000, [], "july-2026");
+  assert.equal(focused.itemIds.length, domainSampleMinimum);
+  const followup = {
+    ...focused,
+    submittedAt: 40_000,
+    answers: Object.fromEntries(sessionItems(developer, focused).map(({ id, correct }) => [id, correct])),
+  };
+  const after = domainFour([earlier, followup]);
+  assert.deepEqual([after.status, after.correct, after.total, after.sampleCorrect, after.sampleTotal], ["met", 0, 1, 4, 5],
+    "a new targeted sample supplements the single original result without changing it");
+  const julySnapshot = { ...earlier, snapshot: { ...earlier.snapshot, guide: julyGuideUrls[developer.id] } };
+  assert.equal(domainFour([julySnapshot, followup]).status, "met", "the administrative guide update preserves reassessment eligibility");
+  assert.equal(domainFour([earlier, { ...followup, priorExposure: [followup.itemIds[0]] }]).status, "insufficient");
+  assert.equal(domainFour([earlier, { ...followup, version: decemberVersion }]).status, "insufficient");
+
 }
 
 function checkFieldwork() {
@@ -261,6 +350,19 @@ function checkPortfolios() {
 }
 
 function checkPreparation() {
+  assert.deepEqual(new Set(Object.keys(assignmentDebriefs)), new Set(portfolio.map(({ id }) => id)), "every assignment teaches its technical analogy in the debrief");
+  for (const { observation, implementation, transfer, references } of Object.values(assignmentDebriefs)) {
+    assert.ok(observation && implementation && transfer && references.length && references.every((key) => sources[key]));
+  }
+  for (const exhibit of missionExhibits) {
+    const mission = portfolio.find((entry) => missionMappings(entry).some(({ itemId }) => itemId === exhibit.id));
+    assert.ok(mission && missionQuestions(mission).includes(exhibit), `${exhibit.id} is presented in its mapped city check`);
+    const original = [...(cityChecks[mission.track] ?? []), ...banks[mission.track].practice, ...banks[mission.track].followup, ...missionTransfer]
+      .find(({ id }) => id === exhibit.id);
+    assert.equal(exhibit.objective, original.objective, exhibit.id);
+    assert.deepEqual(exhibit.correct, original.correct, `${exhibit.id} preserves past check scoring`);
+    assert.ok(exhibit.context && exhibit.prompt !== original.prompt && Object.values(exhibit.rationales).every(Boolean));
+  }
   const revisedActivities = [associateStudy, developerStudy, professionalStudy].flat();
   assert.equal(revisedActivities.length, new Set(revisedActivities.map((entry) => entry[2])).size, "distinct guide cases");
   let guided = 0;
@@ -274,8 +376,26 @@ function checkPreparation() {
     for (const version of decemberBlueprint(track) ? ["july-2026", decemberVersion] : ["july-2026"]) {
       const revised = version === decemberVersion;
       const coverage = objectiveCoverage(track, version).flatMap(({ skills }) => skills);
+      const bank = practiceBank(track.id, version);
+      const objectives = new Set(coverage.map(({ id }) => id));
+      assert.ok(checkpoints.every(({ objectives: [historical, updated] }) => objectives.has(revised ? updated ?? historical : historical)),
+        `${track.code} ${version} starting feedback links to valid practice objectives`);
       if (revised) {
-        assert.ok(coverage.every(({ id, activity, missions }) => activity?.[0] === id && activity.every(Boolean) && sources[activity[1]] && !missions.length), track.code);
+        assert.ok(coverage.every(({ id, activity, missions }) => activity?.[0] === id && activity.every(Boolean) && sources[activity[1]] && missions.length === 1), track.code);
+        const { missionGuideCases } = require("../lib/claude/curriculum/city-guide.ts");
+        checkAnswerLengths(bank.practice, `${track.code} December short practice`);
+        checkAnswerLengths(bank.followup, `${track.code} December seven-day follow-up`);
+        assert.deepEqual(new Set(bank.practice.map(({ objective }) => objective)), new Set(coverage.map(({ id }) => id)), track.code);
+        assert.deepEqual(new Set(bank.followup.map(itemDomain)), new Set(decemberBlueprint(track).domains.map(({ id }) => id)), track.code);
+        assert.ok(coverage.every(({ id, missions }) => missionGuideCases(track.id, missions[0].id).some(([objective]) => objective === id)));
+        assert.equal(new Set([...bank.practice, ...bank.followup].map(({ id }) => id)).size, bank.practice.length + bank.followup.length);
+        const target = coverage.at(-1).id;
+        const targeted = createSession(track, "domain", Number(target.split(".")[0]), false, [], 5_000, [], version, undefined, target);
+        assert.equal(sessionItems(track, targeted)[0].objective, target, "exact-skill practice uses the selected guide");
+        const study = createSession(track, "mixed", null, false, [], 5_000, [], version);
+        const first = { ...study, submittedAt: 9_000 };
+        assert.equal(followupDue([first]), null, "revised work does not start the original guide's clock");
+        assert.equal(followupDue([first], version), 9_000 + 7 * 86_400_000);
         guided += coverage.length;
       } else assert.ok(coverage.every(({ missions }) => missions.length), track.code);
       const covered = new Set(coverage.map(({ id }) => id));
@@ -294,7 +414,15 @@ function checkPreparation() {
       const items = sessionItems(track, draft);
       const attempt = { ...draft, submittedAt: 20_000, answers: Object.fromEntries(items.map(({ id, correct }) => [id, correct])) };
       const [fresh] = timedEvidence(track, version, [attempt]);
-      assert.ok(fresh?.fresh && fresh.met, track.code);
+      assert.ok(fresh?.fresh && fresh.overallMet, track.code);
+      const supplements = fresh.domains.filter(({ status }) => status === "insufficient").map(({ id }) => {
+        const set = createSession(track, "reassessment", id, true, [attempt], 22_000, [], version);
+        const entries = sessionItems(track, set);
+        assert.ok(entries.length > 0, `${track.code} has a fresh sample for domain ${id}`);
+        return { ...set, submittedAt: 32_000, answers: Object.fromEntries(entries.map(({ id, correct }) => [id, correct])) };
+      });
+      const evidenceAttempts = [attempt, ...supplements];
+      assert.ok(timedEvidence(track, version, evidenceAttempts)[0].met, track.code);
       assert.equal(fresh.total, revised ? 60 : track.count, "unscored questions excluded from benchmark");
       assert.equal(timedEvidence(track, version, [{ ...attempt, priorExposure: [items[0].id] }])[0].met, false, "reuse is review evidence");
       assert.equal(timedEvidence(track, version, [{ ...attempt, priorExposure: undefined }])[0].met, false, "legacy exposure remains unknown");
@@ -305,8 +433,8 @@ function checkPreparation() {
       const capstones = solved.filter(([id, guide]) => id === track.id && guide === version).map(([id, guide, stage, artifact]) => ({
         ...scoreCapstone(id, guide, stage, artifact), id: `${id}-${stage}`, submittedAt: stage === "capstone" ? 10_000 : due,
       }));
-      assert.equal(benchmarkEvidence(track, version, { ...emptyReadiness, capstones }, [attempt], due - 1).met, false, "delayed case timing is enforced");
-      assert.equal(benchmarkEvidence(track, version, { ...emptyReadiness, capstones }, [attempt], due).met, true);
+      assert.equal(benchmarkEvidence(track, version, { ...emptyReadiness, capstones }, evidenceAttempts, due - 1).met, false, "delayed case timing is enforced");
+      assert.equal(benchmarkEvidence(track, version, { ...emptyReadiness, capstones }, evidenceAttempts, due).met, true);
     }
   }
   assert.equal(guided, revisedActivities.length);
@@ -503,7 +631,7 @@ async function storageChecks() {
   assert.equal(timed.progress.attempts.length, 2);
   assert.deepEqual(timed.progress.attempts[1].answers, {});
   const firstRehearsal = createSession(track, "assessment", null, true, [], now, [], "july-2026");
-  const { form: _form, priorExposure: _priorExposure, ...oldDraft } = firstRehearsal;
+  const { form: _form, priorExposure: _priorExposure, snapshot: _snapshot, ...oldDraft } = firstRehearsal;
   stored.set(progressKey(track), JSON.stringify({ ...timed.progress, draft: oldDraft }));
   assert.deepEqual(sessionItems(track, readProgress(track).draft), rehearsalItems(track.id));
   assert.equal(readProgress(track).draft.priorExposure, undefined);
@@ -538,6 +666,30 @@ async function storageChecks() {
   assert.ok((await updateProgress(track, emptyProgress, {
     type: "start", draft: { ...newDraft, itemIds: newDraft.itemIds.slice(0, -1) },
   })).error, "reject a truncated alternate form");
+  const recovery = createSession(track, "assessment", null, true, readProgress(track).attempts, Date.now(), readProgress(track).seen, decemberVersion, "recovery");
+  assert.equal(recovery.itemIds.length, 70);
+  assert.equal((await updateProgress(track, emptyProgress, { type: "start", draft: recovery })).saved, true);
+  assert.equal(readProgress(track).draft.snapshot.id, recovery.snapshot.id);
+  assert.equal(JSON.parse(stored.get(progressKey(track))).draft.snapshot, undefined, "uses archive references in persisted sessions");
+  await updateProgress(track, emptyProgress, { type: "discard", id: recovery.id });
+  assert.ok((await updateProgress(track, emptyProgress, { type: "start", draft: recovery })).error,
+    "a stale selection with a prior question cannot masquerade as fresh");
+  const afterDiscard = createSession(track, "assessment", null, true, readProgress(track).attempts, Date.now(), readProgress(track).seen, decemberVersion, "recovery");
+  assert.equal(afterDiscard.itemIds.length, 70, "an extra reserve question allows recovery after discarding the initial question");
+  assert.ok(!afterDiscard.itemIds.includes(recovery.itemIds[0]));
+  assert.equal((await updateProgress(track, emptyProgress, { type: "start", draft: afterDiscard })).saved, true);
+  const savedRecovery = await updateProgress(track, emptyProgress, { type: "submit", id: afterDiscard.id });
+  assert.deepEqual(readProgress(track).attempts.at(-1).snapshot, savedRecovery.progress.attempts.at(-1).snapshot);
+  const reassessment = createSession(track, "reassessment", 1, true, readProgress(track).attempts, Date.now(), readProgress(track).seen, decemberVersion);
+  assert.equal(reassessment.itemIds.length, 4);
+  assert.equal((await updateProgress(track, emptyProgress, { type: "start", draft: reassessment })).saved, true);
+  for (const question of sessionItems(track, reassessment)) {
+    for (const value of question.correct) await updateProgress(track, emptyProgress, { type: "choose", id: reassessment.id, itemId: question.id, value });
+  }
+  const domainResult = await updateProgress(track, emptyProgress, { type: "submit", id: reassessment.id });
+  assert.ok(domainResult.saved);
+  assert.equal(readProgress(track).attempts.at(-1).snapshot.id, reassessment.snapshot.id);
+  assert.ok(timedEvidence(track, decemberVersion, readProgress(track).attempts).at(-1).domains[0].reassessed);
   assert.equal(readProgress(tracks[1]), null);
   stored.set(progressKey(track), "{corrupt");
   assert.equal(readProgress(track), null);

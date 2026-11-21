@@ -7,15 +7,16 @@ type Question = readonly [
   id: string, objective: Objective, source: Source, prompt: string,
   answer: string | readonly [string, string], explanation: string,
   distractorA: string, distractorB: string, distractorC: string,
+  rationales?: readonly [string, string, string, string] | readonly [string, string, string, string, string],
 ];
 
 /** Build an original held-out case. Key positions are assigned to the full form. */
 export function retestCase(scenario: string, context: string, questions: readonly Question[]): PracticeItem[] {
-  return questions.map(([id, objective, source, prompt, answer, explanation, ...distractors]) => {
+  return questions.map(([id, objective, source, prompt, answer, explanation, a, b, c, rationales]) => {
     const correct = typeof answer === "string" ? [answer] : answer;
     return {
       ...item("retest-" + id, objective, source, scenario, prompt, typeof answer === "string" ? "a" : "ab",
-        explanation, ...[...correct, ...distractors].map((choice) => [choice, ""] as const)),
+        explanation, ...[...correct, a, b, c].map((choice, index) => [choice, rationales?.[index] ?? ""] as const)),
       context,
     };
   });

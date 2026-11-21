@@ -270,6 +270,25 @@ button svg, .person svg, .inspector-heading > svg { flex: none; }
 .quest-hud:hover { background: #ffeab8; }
 .quest-hud .small-label { font-size: 11px; color: #715126; }
 .quest-hud strong { display: block; margin-top: 3px; font-size: 15px; }
+.quest-hud-count { display: none; }
+.city-welcome {
+  position: absolute;
+  inset: auto auto 17px 17px;
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+  width: min(295px, calc(100% - 34px));
+  padding: 14px;
+  border: 1px solid #f5e0ac;
+  border-radius: 11px;
+  background: #fff3d5;
+  box-shadow: 0 4px 15px #34462b4f;
+}
+.city-welcome h1 { font-size: 21px; letter-spacing: -.025em; }
+.city-welcome p { color: var(--ink-muted); font-size: 14px; line-height: 1.4; }
+.city-welcome a { text-decoration: none; }
+.city-welcome .button-text { min-height: 32px; padding-block: 5px; }
+.city-welcome :is(a, button):focus-visible { outline: 3px solid var(--green-dark); outline-offset: 2px; }
 .inspection-panel {
   position: absolute;
   right: 16px;
@@ -625,20 +644,48 @@ a.place-row:focus-visible { outline: 3px solid #337c66; }
   .inspection-panel { top: auto; bottom: 64px; right: 8px; width: min(360px, calc(100% - 16px)); max-height: 44dvh; }
   .camera-hud { right: 8px; bottom: 8px; }
   .camera-hint { display: none; }
-  .quest-hud { left: 8px; bottom: 8px; min-width: 0; width: min(205px, calc(100% - 151px)); gap: 5px; padding: 6px; grid-template-columns: 27px minmax(0,1fr) 13px; }
-  .quest-hud .assignment-icon { width: 27px; height: 27px; }
-  .quest-hud strong { font-size: 12px; }
-  .quest-hud .small-label { font-size: 10px; }
+  .quest-hud { left: 8px; bottom: 8px; }
+  .city-welcome { inset: auto auto 64px 8px; width: min(280px, calc(100% - 16px)); }
 }
 @media (max-width: 360px) {
   .world-title svg, .world-hud .nav-button svg { display: none; }
 }
-@media (pointer: coarse) and (max-width: 450px) {
-  .quest-hud { bottom: 62px; width: min(205px, calc(100% - 16px)); }
+@media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
+  .quest-hud {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    width: 52px;
+    height: 52px;
+    min-width: 0;
+    padding: 0;
+  }
+  .quest-hud .assignment-icon { width: auto; height: auto; background: transparent; }
+  .quest-hud-copy {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .quest-hud > svg { display: none; }
+  .quest-hud-count {
+    display: block;
+    min-width: 16px;
+    padding-inline: 4px;
+    border-radius: 999px;
+    background: #f0dca8;
+    color: var(--gold-ink);
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 16px;
+    text-align: center;
+  }
 }
 
 .district-switcher { position: relative; pointer-events: auto; justify-self: center; }
-.district-switcher h1:focus { outline: none; }
+.district-switcher > [tabindex="-1"]:focus { outline: none; }
 .district-switcher button.world-title:hover { background: #ebe6dc; }
 .district-menu {
   position: absolute;
@@ -704,12 +751,6 @@ a.place-row:focus-visible { outline: 3px solid #337c66; }
   color: var(--ink-muted);
   font-size: 13px;
   margin: 0;
-}
-
-@media (max-width: 480px) and (pointer: fine) {
-  .game-world:has(.camera-hud[data-olive-focus="true"]) .quest-hud {
-    width: min(205px, calc(100% - 177px));
-  }
 }
 
 .board-title p { margin-top: 5px; color: var(--ink-muted); font-size: 13px; }
@@ -1790,6 +1831,13 @@ a.place-row:focus-visible { outline: 3px solid #337c66; }
 .assignment-lens-rationales { display: grid; gap: 8px; padding-left: 21px; }
 .assignment-lens-rationales p { margin: 4px 0 0; }
 .mission-debrief-results > pre { padding: 12px; background: #eef2e9; border: 1px solid #cfd8ca; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mission-debrief-lesson { display: grid; gap: 12px; }
+.mission-debrief-lesson section { padding: 12px 14px; border-inline-start: 3px solid #638573; background: #eef2e9; border-radius: 6px; }
+.mission-debrief-lesson h4, .mission-debrief-lesson p { margin: 0; }
+.mission-debrief-lesson h4 + p { margin-top: 5px; }
+.mission-debrief-citation, .mission-mapping cite { display: block; color: #4b6256; font-size: .83rem; }
+.mission-mapping small { display: block; margin-top: 2px; }
+.mission-question-context { display: block; margin: 6px 0; padding: 8px 10px; border-inline-start: 3px solid #638573; background: #eef2e9; border-radius: 5px; white-space: pre-wrap; }
 .assignment-work h4[tabindex="-1"] { scroll-margin-top: 66px; }
 
 .preparation-extra > p { flex: 1 1 250px; }
@@ -2155,3 +2203,11 @@ a.place-row:focus-visible { outline: 3px solid #337c66; }
   .case-sheets thead th:last-child { width: 46%; }
   .case-link-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.1fr); gap: 4px; }
 }
+
+.building-guide-action { width: 100%; justify-content: center; min-height: 44px; }
+.city-guide-practice .academy-activity { padding: 8px 0; }
+.city-guide-practice .academy-button { font: inherit; color: var(--ink); border: 1px solid #acbcac; border-radius: 8px; background: #f2f2e6; }
+.city-guide-practice .academy-entry-question input, .account-diagnostics input { accent-color: #285640; }
+.city-guide-practice .button-outline { margin-block: 6px; }
+.account-diagnostics { display: flex; min-height: 44px; align-items: center; gap: 10px; }
+.main-nav .city-help-nav svg { display: block; }

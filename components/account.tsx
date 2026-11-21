@@ -4,7 +4,10 @@ import { CloudAlert, UserRound, X } from "lucide-react";
 import { createContext, Fragment, useContext, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
+import { diagnosticsEnabled, recordClientHealth, setDiagnosticsEnabled } from "../lib/client-health";
 import { guestSaves, setProgressUser, subscribeToProgress } from "../lib/progress-storage";
+import { downloadProgressBackup } from "../lib/progress-recovery";
 import { getSupabase, supabaseConfigured } from "../lib/supabase/client";
 import { queueGuestProgress, resolveProgressConflict, syncProgress } from "../lib/supabase/progress";
 import type { ProgressConflict } from "../lib/supabase/progress";
@@ -56,6 +59,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     let working = false;
     let pending = false;
     let delay = 3000;
+    let offlineSince: number | null = null;
 
     function queue(wait = 350) {
       if (controller.signal.aborted) return;
@@ -76,11 +80,18 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         if (controller.signal.aborted) return;
         setConflicts(result.conflicts);
         setSyncState("synced");
+        if (offlineSince !== null) {
+          const outageDuration = Date.now() - offlineSince;
+          void recordClientHealth(userId, "sync-unavailable", "account", outageDuration);
+          void recordClientHealth(userId, "sync-recovered", "account", outageDuration);
+          offlineSince = null;
+        }
         delay = 3000;
         if (result.retry) nextDelay = 350;
       } catch {
         if (controller.signal.aborted) return;
         setSyncState("offline");
+        offlineSince ??= Date.now();
         nextDelay = delay;
         delay = Math.min(delay * 2, 60000);
       } finally {
@@ -133,6 +144,7 @@ export function AccountButton({ city = false }: { city?: boolean }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [canImport, setCanImport] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(false);
   const hasIssue = !!user && (syncState === "offline" || conflicts.length > 0);
 
   if (!supabaseConfigured) return null;
@@ -141,6 +153,7 @@ export function AccountButton({ city = false }: { city?: boolean }) {
     setError("");
     setNotice("");
     setCanImport(guestSaves().length > 0);
+    setDiagnostics(user ? diagnosticsEnabled(user.id) : false);
     if (user) sync();
     dialog.current?.showModal();
   }
@@ -182,6 +195,16 @@ export function AccountButton({ city = false }: { city?: boolean }) {
 
   const label = user ? "Account" : "Sign in";
   const Icon = hasIssue ? CloudAlert : UserRound;
+  function chooseCopy(conflict: ProgressConflict, keepDevice: boolean) {
+    if (!user || !resolveProgressConflict(user.id, conflict, keepDevice)) {
+      setError("This browser could not preserve both versions. Download a backup before trying again.");
+      return;
+    }
+    setNotice("Both versions are saved under Study help and recovery.");
+    setError("");
+    sync();
+  }
+
   return <>
     <button className={city ? "nav-button account-nav" : "button button-outline account-nav"} type="button"
       aria-label={hasIssue ? "Account, sync needs attention" : label} aria-haspopup="dialog"
@@ -197,12 +220,15 @@ export function AccountButton({ city = false }: { city?: boolean }) {
         <p className="account-email">{user.email}</p>
         <p role="status">{syncState === "offline" ? "Sync is unavailable. Changes on this device will retry automatically."
           : syncState === "loading" ? "Loading your saved progress…"
-          : conflicts.length ? "Choose which version to keep for each conflicting save." : "Your progress is available across devices."}</p>
+          : conflicts.length ? "Some saves need your attention. CertCity keeps recovery copies when you choose a version." : "Your progress is available across devices."}</p>
         {conflicts.map((conflict) => <div className="account-conflict" key={conflict.key}>
           <strong>{conflictLabel(conflict.key)}</strong>
           <div className="account-actions">
-            <button className="button button-outline" type="button" onClick={() => { resolveProgressConflict(user.id, conflict, true); sync(); }}>Keep this device’s save</button>
-            <button className="button button-outline" type="button" onClick={() => { resolveProgressConflict(user.id, conflict, false); sync(); }}>Keep cloud save</button>
+            {conflict.localOnly ? <p>This save exceeds the cloud size limit. Your work is available on this device.</p> : <>
+              <button className="button button-outline" type="button" onClick={() => chooseCopy(conflict, true)}>Use this device’s version</button>
+              <button className="button button-outline" type="button" onClick={() => chooseCopy(conflict, false)}>Use the cloud version</button>
+            </>}
+            <button className="button button-outline" type="button" onClick={() => downloadProgressBackup(conflict.cloudValue ? [{ key: conflict.key, value: conflict.cloudValue }] : [])}>Download backup</button>
           </div>
         </div>)}
         <div className="account-actions">
@@ -215,6 +241,16 @@ export function AccountButton({ city = false }: { city?: boolean }) {
           }}>Copy guest progress</button>}
           <button className="button button-outline" type="button" disabled={busy} onClick={() => void signOut()}>Sign out</button>
         </div>
+        <label className="account-diagnostics">
+          <input type="checkbox" checked={diagnostics} onChange={(event) => {
+            const enabled = event.currentTarget.checked;
+            if (setDiagnosticsEnabled(user.id, enabled)) setDiagnostics(enabled);
+            else setError("This browser could not save your diagnostic preference.");
+          }} /> Share basic reliability diagnostics from this browser
+        </label>
+        <p>Diagnostics include scene load times and sync interruptions. Your answers and case records stay out of these reports.</p>
+        <Link href="/help#study-email" onClick={() => dialog.current?.close()}>Study email reminders</Link>
+        <Link href="/help" onClick={() => dialog.current?.close()}>Study help and recovery</Link>
         {notice && <p role="status">{notice}</p>}
         {error && <p className="account-error" role="alert">{error}</p>}
       </div> : <form className="dialog-body account-body" onSubmit={signIn}>

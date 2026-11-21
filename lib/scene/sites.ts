@@ -12,6 +12,13 @@ export type Landmark = {
 export type SceneLink = { href: string; surface: THREE.Mesh };
 export type SceneConversation = { id: string; bounds: THREE.Box3; anchor: THREE.Vector3 };
 
+type ReplayState = { result: "pass" | "review"; token: number; stage?: "sample" | "new-case" };
+export type MissionRoomReplay = ReplayState & (
+  | { kind: "bulletin"; destination?: "approval" | "public" | "vendor" }
+  | { kind: "receiving"; disposition?: "held" | "posted" | "unresolved" }
+  | { kind: "operations"; staffed?: boolean; minutes?: number }
+);
+
 export type Environment = {
   landmarks: Landmark[];
   links?: SceneLink[];
@@ -22,6 +29,7 @@ export type Environment = {
   cameraNear?: (x: number, z: number) => void;
   setWorkload?: (staffHours: number) => void;
   setAssignmentComplete?: (complete: boolean) => void;
+  setMissionReplay?: (replay: MissionRoomReplay | null, immediate: boolean) => void;
 };
 
 export function landmark(id: string, x: number, z: number, width: number, depth: number, height: number): Landmark {

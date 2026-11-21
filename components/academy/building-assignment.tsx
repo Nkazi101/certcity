@@ -8,15 +8,17 @@ import { assignmentStations } from "../../lib/claude/assignment-work";
 import type { AssignmentWork, AssignmentWorkId } from "../../lib/claude/assignment-work";
 import { saveAssignmentWork, saveMissionInterview } from "../../lib/claude/pathway";
 import type { MissionRecord } from "../../lib/claude/pathway";
+import type { MissionRoomReplay } from "../../lib/scene/renderer";
 import { ConversationAction, ConversationFrame } from "../city-conversation";
 import { AssignmentWorkArea } from "./assignment-work";
 import { caseworkFor } from "../../lib/claude/cases";
-import { roomFirstAction, sourcesForSection } from "../../lib/claude/cases/presentation";
-import { CaseWorkbench } from "./case-workbench";
+import { sourcesForSection, workstationBrief } from "../../lib/claude/cases/presentation";
+import { CaseWorkbench, WorkstationDirections } from "./case-workbench";
+import { CityGuidePractice } from "./city-guide-practice";
 
-export type BuildingStation = "stakeholder-0" | "stakeholder-1" | "work" | "evidence";
+export type BuildingStation = "stakeholder-0" | "stakeholder-1" | "work" | "evidence" | "guide";
 
-export function BuildingAssignmentDialog({ mission, id, experience, station, dialog, record, caseFiles, onClose, onChange, onSaved, onWork, onLegacyReplay, moduleProgress }: {
+export function BuildingAssignmentDialog({ mission, id, experience, station, dialog, record, caseFiles, onClose, onChange, onSaved, onWork, onLegacyReplay, moduleProgress, objective, onRoomReplay }: {
   mission: Mission;
   id?: AssignmentWorkId;
   caseFiles?: readonly ReplayCase[];
@@ -30,6 +32,8 @@ export function BuildingAssignmentDialog({ mission, id, experience, station, dia
   onWork: () => void;
   onLegacyReplay?: () => void;
   moduleProgress: ReactNode;
+  objective?: string;
+  onRoomReplay: (replay: MissionRoomReplay, preview: HTMLCanvasElement) => void;
 }) {
   const [draft, setDraft] = useState(record?.workDraft);
   const [asked, setAsked] = useState(false);
@@ -39,6 +43,7 @@ export function BuildingAssignmentDialog({ mission, id, experience, station, dia
   const person = experience.interviews[station === "stakeholder-1" ? 1 : 0];
   const answered = asked || !!record?.interviewed?.includes(person.id);
   const exercise = caseworkFor(mission.id);
+  const brief = workstationBrief(mission.id);
 
   function change(work: AssignmentWork) {
     if (mission.kind !== "workbench") return;
@@ -78,21 +83,21 @@ export function BuildingAssignmentDialog({ mission, id, experience, station, dia
     : caseFiles ?? [];
   const firstSource = exercise && sourcesForSection(mission.id, exercise, 0)[0]?.[0];
 
-  return <ConversationFrame dialog={dialog} title={station === "work" ? mission.title : station === "evidence" ? "Case file" : experience.room}
+  const stationWork = station === "work" || station === "evidence" || station === "guide";
+  return <ConversationFrame dialog={dialog} title={station === "work" ? mission.title : station === "evidence" ? "Case file" : station === "guide" ? "Exam guide practice" : experience.room}
     name={person.name} role={person.role} portrait={person.portrait}
     moduleProgress={moduleProgress}
-    step={station === "work" ? station : answered ? "answer" : "opening"}
-    variant={station === "work" || station === "evidence" ? "workbench" : "conversation"}
-    room={station === "work" || station === "evidence" ? experience.room : undefined}
+    step={stationWork ? station : answered ? "answer" : "opening"}
+    variant={stationWork ? "workbench" : "conversation"}
+    room={stationWork ? experience.room : undefined}
     onClose={() => { onClose(); void pending.current.then(onChange); }}>
-    {station === "work" && exercise ? <CaseWorkbench mission={mission} exercise={exercise} record={record}
+    {station === "guide" ? <CityGuidePractice mission={mission} objective={objective} />
+    : station === "work" && exercise ? <CaseWorkbench mission={mission} exercise={exercise} record={record}
       speaker={person.name}
-      onChange={onChange} onSaved={onSaved} beforeClose={(write) => { pending.current = write; }}
+      onChange={onChange} onSaved={onSaved} onRoomReplay={onRoomReplay} beforeClose={(write) => { pending.current = write; }}
       legacyReplay={onLegacyReplay && <button type="button" className="button button-text" onClick={onLegacyReplay}>Open work from the earlier version</button>} />
     : station === "work" && id ? <>
-      <div className="casework lab-start">
-        <blockquote className="casework-opening">“{roomFirstAction(mission.id, person.opening)}” <cite>{person.name}</cite></blockquote>
-      </div>
+      {brief && <WorkstationDirections brief={brief} showProblem />}
       <AssignmentWorkArea id={id} draft={draft} savedWork={record?.work} busy={busy} change={change} save={(work) => void save(work)} />
       <details className="conversation-file assignment-work-notes">
         <summary><BookOpen size={16} aria-hidden="true" /> Case notes</summary>

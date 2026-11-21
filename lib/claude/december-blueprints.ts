@@ -1,4 +1,5 @@
 import type { Domain, Track, TrackId } from "./blueprints";
+import { architectFoundationsLabel, blueprintLabel } from "./blueprints";
 
 export const decemberVersion = "december-2026";
 export const decemberLabel = "Exam guide v1.1 · December 7, 2026";
@@ -56,4 +57,9 @@ export function decemberBlueprint(track: Track) {
 
 export function rehearsalBlueprint(track: Track, version?: ExamVersion) {
   return version === decemberVersion ? decemberBlueprint(track) ?? track : track;
+}
+
+export function examGuideLabel(track: Track, version?: ExamVersion) {
+  if (track.id === "architect-foundations") return architectFoundationsLabel;
+  return version === decemberVersion ? decemberLabel : blueprintLabel;
 }

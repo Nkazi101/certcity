@@ -5,13 +5,14 @@ import type { ShiftResult } from "../lib/shift";
 
 const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
-export function CityImpact({ savedShift, savedAssignments, localOutcome, dialog }: {
+export function CityImpact({ savedShift, savedAssignments, inRoom = false, dialog }: {
   savedShift: ShiftResult | null;
   savedAssignments: readonly { place: string; outcome: string; title?: string }[];
   dialog: RefObject<HTMLDialogElement | null>;
-  localOutcome?: string | null;
+  inRoom?: boolean;
 }) {
   const impact = shiftImpact(savedShift ?? baselineShift);
+  const savedCount = savedAssignments.length + (savedShift ? 1 : 0);
   const metrics = [
     { label: impact.hoursSaved < 0 ? "Follow-up added" : "Staff time saved", value: `${Math.abs(impact.hoursSaved).toFixed(1).replace(/\.0$/, "")} h`, icon: Clock3, increase: impact.hoursSaved < 0 },
     { label: impact.falseRepliesAvoided < 0 ? "False replies added" : "False replies avoided", value: String(Math.abs(impact.falseRepliesAvoided)), icon: MessageSquareCheck, increase: impact.falseRepliesAvoided < 0 },
@@ -20,9 +21,8 @@ export function CityImpact({ savedShift, savedAssignments, localOutcome, dialog 
   return (
     <>
       <button type="button" className="city-impact" aria-haspopup="dialog" onClick={() => dialog.current?.showModal()}>
-        <span className="impact-heading">City impact <span>{localOutcome ? "this assignment" : savedShift ? "per simulated week" : savedAssignments.length ? `${savedAssignments.length} saved` : "No outcomes saved"}</span></span>
-        {localOutcome && <span className="local-city-impact">{localOutcome}</span>}
-        {!localOutcome && savedShift && <span className="impact-counters">
+        <span className="impact-heading">City impact <span>{savedShift && !inRoom ? "per simulated week" : savedCount ? `${savedCount} saved` : "No outcomes saved"}</span></span>
+        {!inRoom && savedShift && <span className="impact-counters">
           {metrics.map(({ label, value, icon: Icon, increase }) => <span className="impact-counter" data-increase={increase} key={label}>
             <Icon size={16} aria-hidden="true" /><strong>{value}</strong><small>{label}</small>
           </span>)}

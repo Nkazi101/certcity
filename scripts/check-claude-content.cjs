@@ -12,7 +12,7 @@ require.extensions[".ts"] = (module, file) => {
 
 const { examMinutes, tracks } = require("../lib/claude/blueprints.ts");
 const { decemberBlueprint, decemberVersion } = require("../lib/claude/december-blueprints.ts");
-const { rehearsalItems } = require("../lib/claude/assessment/forms.ts");
+const { rehearsalFormIds, rehearsalItems } = require("../lib/claude/assessment/forms.ts");
 const { skillNote } = require("../lib/claude/skill-notes.ts");
 const { runReference, referenceBaseline, runStream, streamBaseline, runRetrieval, retrievalBaseline } = require("../lib/claude/fieldwork.ts");
 const { assignmentChoices, hasAssignmentWork, validAssignmentWork } = require("../lib/claude/assignment-work.ts");
@@ -24,13 +24,22 @@ const { missionMappings, missionPassed, stationOptions } = require("../lib/claud
 const { acknowledgeReview, missingExpertise, missionCompleted, missionFollowupQuestions, missionPreparationSteps, missionQuestions, missionsFor, missionStoragePrefix, portfolio, portfolioEvidence, readPortfolio, saveCityCasework, saveMission, saveMissionDebrief, saveMissionDraft, saveMissionFollowup, saveMissionInterview, saveTransfer, unmetMissions } = require("../lib/claude/pathway.ts");
 const { missionExperiences } = require("../lib/claude/mission-experiences.ts");
 const { sources } = require("../lib/claude/items.ts");
-const { banks, createSession, domainEvidence, followupDue, itemDomain, responseComplete, score, sessionItems } = require("../lib/claude/practice.ts");
+const { banks, createSession, domainEvidence, followupDue, itemDomain, rehearsalForms, responseComplete, score, sessionItems } = require("../lib/claude/practice.ts");
 const { emptyProgress, progressKey, readProgress, updateProgress } = require("../lib/claude/progress.ts");
 const { assignments, isCityAssignment } = require("../lib/claude/assignments.ts");
 const { cityChecks } = require("../lib/claude/city-checks.ts");
 const { readCityAssignment, readCityCheck, saveCityAssignment, saveCityCheck } = require("../lib/claude/city-progress.ts");
 const { dispatchPreparationSteps, emptyProgress: emptyDispatchProgress, updateCertification } = require("../lib/certification-progress.ts");
 const { skillChecks } = require("../lib/exam-practice.ts");
+const { objectiveCoverage } = require("../lib/claude/curriculum/index.ts");
+const { associateStudy } = require("../lib/claude/curriculum/associate.ts");
+const { developerStudy } = require("../lib/claude/curriculum/developer.ts");
+const { professionalStudy } = require("../lib/claude/curriculum/professional.ts");
+const { bridges } = require("../lib/claude/curriculum/bridges.ts");
+const { capstoneEvidence, getCapstoneDefinition, initialCapstoneDraft, scoreCapstone, validCapstoneAttempt } = require("../lib/claude/capstones/index.ts");
+const { benchmarkEvidence, emptyReadiness, readReadiness, readinessKey, timedEvidence, updateReadiness } = require("../lib/claude/readiness.ts");
+const { isProgressKey } = require("../lib/progress-storage.ts");
+const { solved } = require("./check-claude-capstones.cjs");
 
 const ids = new Set();
 const prompts = new Set();
@@ -83,32 +92,59 @@ for (const track of tracks) {
 }
 
 function checkRehearsals() {
+  const alternateIds = new Set();
+  const alternatePrompts = new Set();
   for (const track of tracks) {
     const updated = decemberBlueprint(track);
-    for (const version of updated ? ["july-2026", decemberVersion] : ["july-2026"]) {
+    const versions = updated ? ["july-2026", decemberVersion] : ["july-2026"];
+    const originalIds = new Set(versions.flatMap((version) => rehearsalItems(track.id, version).map(({ id }) => id)));
+    const originalPrompts = new Set(versions.flatMap((version) => rehearsalItems(track.id, version).map(({ prompt }) => prompt)));
+    const cityItems = [
+      ...skillChecks.first.questions, ...skillChecks.followup.questions,
+      ...missionsFor(track.id).flatMap((mission) => [...missionQuestions(mission), ...missionFollowupQuestions(mission)]),
+    ];
+    const cityIds = new Set(cityItems.map(({ id }) => id));
+    const cityPrompts = new Set(cityItems.map(({ prompt }) => prompt));
+    for (const version of versions) {
       const blueprint = version === decemberVersion ? updated : track;
-      const form = rehearsalItems(track.id, version);
-      const scored = form.filter(({ pilot }) => !pilot);
-      assert.equal(form.length, blueprint.count, `${track.code} ${version} item count`);
-      assert.equal(scored.length, version === decemberVersion ? 60 : blueprint.count);
-      const objectives = blueprint.domains.flatMap((domain) => domain.objectives.map((_, index) => `${domain.id}.${index + 1}`));
-      assert.deepEqual(new Set(scored.map(({ objective }) => objective)), new Set(objectives), track.code);
-      assert.equal(new Set(form.map(({ id }) => id)).size, form.length, track.code);
-      assert.equal(new Set(form.map(({ prompt }) => prompt)).size, form.length, track.code);
-      for (const domain of blueprint.domains) {
-        const coverage = scored.filter((item) => itemDomain(item) === domain.id).length;
-        assert.ok(Math.abs(coverage - domain.weight * scored.length / 100) <= 1.1, `${track.code} domain ${domain.id} weighting`);
+      for (const label of rehearsalFormIds) {
+        const form = rehearsalItems(track.id, version, label);
+        const scored = form.filter(({ pilot }) => !pilot);
+        const title = `${track.code} ${version} ${label}`;
+        assert.equal(form.length, blueprint.count, `${title} item count`);
+        assert.equal(scored.length, version === decemberVersion ? 60 : blueprint.count, title);
+        const objectives = blueprint.domains.flatMap((domain) => domain.objectives.map((_, index) => `${domain.id}.${index + 1}`));
+        assert.deepEqual(new Set(scored.map(({ objective }) => objective)), new Set(objectives), title);
+        assert.equal(new Set(form.map(({ id }) => id)).size, form.length, title);
+        assert.equal(new Set(form.map(({ prompt }) => prompt)).size, form.length, title);
+        for (const [index, domain] of blueprint.domains.entries()) {
+          const coverage = scored.filter((item) => itemDomain(item) === domain.id).length;
+          if (version === decemberVersion) assert.equal(coverage, blueprint.scores[index], title);
+          else assert.ok(Math.abs(coverage - domain.weight * scored.length / 100) <= 1.1, `${title} domain ${domain.id} weighting`);
+        }
+        if (label === "retest") {
+          const singleResponse = form.filter(({ correct }) => correct.length === 1);
+          const keyCounts = ["a", "b", "c", "d"].map((key) => singleResponse.filter(({ correct }) => correct[0] === key).length);
+          assert.ok(Math.max(...keyCounts) - Math.min(...keyCounts) <= 1, `${title} single-response positions`);
+        }
+        for (const question of form) {
+          assert.ok(!ids.has(question.id), question.id);
+          assert.ok(sources[question.source] && question.explanation && question.context && question.prompt.endsWith("?"), question.id);
+          assert.equal(question.options.length, question.correct.length + 3, question.id);
+          assert.ok(question.correct.every((key) => question.options.some(([option]) => option === key)), question.id);
+          assert.equal(new Set(question.options.map(([, text]) => text)).size, question.options.length, question.id);
+          if (label === "retest") {
+            assert.ok(!originalIds.has(question.id) && !cityIds.has(question.id) && !alternateIds.has(question.id), question.id);
+            assert.ok(!originalPrompts.has(question.prompt) && !cityPrompts.has(question.prompt) &&
+              !prompts.has(question.prompt) && !alternatePrompts.has(question.prompt), question.id);
+            alternateIds.add(question.id);
+            alternatePrompts.add(question.prompt);
+          }
+        }
+        const session = createSession(track, "assessment", null, false, [], 10_000, [], version, label);
+        assert.equal(session.deadline, session.startedAt + examMinutes * 60_000);
+        assert.deepEqual(sessionItems(track, session), form);
       }
-      for (const question of form) {
-        assert.ok(!ids.has(question.id), question.id);
-        assert.ok(sources[question.source] && question.explanation && question.context && question.prompt.endsWith("?"), question.id);
-        assert.equal(question.options.length, question.correct.length + 3, question.id);
-        assert.ok(question.correct.every((key) => question.options.some(([option]) => option === key)), question.id);
-        assert.equal(new Set(question.options.map(([, text]) => text)).size, question.options.length, question.id);
-      }
-      const session = createSession(track, "assessment", null, false, [], 10_000, [], version);
-      assert.equal(session.deadline, session.startedAt + examMinutes * 60_000);
-      assert.deepEqual(sessionItems(track, session), form);
     }
   }
 }
@@ -212,6 +248,60 @@ function checkPortfolios() {
     "every non-dispatch mission has exactly one authored interior experience");
 }
 
+function checkPreparation() {
+  const revisedActivities = [associateStudy, developerStudy, professionalStudy].flat();
+  assert.equal(revisedActivities.length, new Set(revisedActivities.map((entry) => entry[2])).size, "distinct guide cases");
+  let guided = 0;
+  const scenarios = new Set();
+  for (const track of tracks) {
+    const { checkpoints } = bridges[track.id];
+    assert.equal(checkpoints.length, 3);
+    assert.ok(checkpoints.every(({ choices, correct, source, why, tryNext }) =>
+      choices[correct] && new Set(choices).size === choices.length && sources[source] && why && tryNext));
+    assert.ok(isProgressKey(readinessKey(track)), "preparation progress syncs via the existing account cache");
+    for (const version of decemberBlueprint(track) ? ["july-2026", decemberVersion] : ["july-2026"]) {
+      const revised = version === decemberVersion;
+      const coverage = objectiveCoverage(track, version).flatMap(({ skills }) => skills);
+      if (revised) {
+        assert.ok(coverage.every(({ id, activity, missions }) => activity?.[0] === id && activity.every(Boolean) && sources[activity[1]] && !missions.length), track.code);
+        guided += coverage.length;
+      } else assert.ok(coverage.every(({ missions }) => missions.length), track.code);
+      const covered = new Set(coverage.map(({ id }) => id));
+      for (const stage of ["capstone", "transfer"]) {
+        const definition = getCapstoneDefinition(track.id, version, stage);
+        assert.ok(!scenarios.has(definition.id), definition.id);
+        scenarios.add(definition.id);
+        assert.ok(definition.criteria.every((item) => (revised ? item.revisedObjectives ?? item.objectives : item.objectives).every((code) => covered.has(code))), definition.id);
+        const result = { ...scoreCapstone(track.id, version, stage, initialCapstoneDraft(definition)), id: `${definition.id}-check`, submittedAt: 10_000 };
+        assert.ok(validCapstoneAttempt(result), definition.id);
+        assert.equal(result.passed, false, `${definition.id} cannot pass in its initial state`);
+        assert.equal(validCapstoneAttempt({ ...result, passed: true }), false, definition.id);
+        assert.equal(capstoneEvidence(track.id, version, [result], 200_000).transferDue, null);
+      }
+      const draft = createSession(track, "assessment", null, true, [], 10_000, [], version, "retest");
+      const items = sessionItems(track, draft);
+      const attempt = { ...draft, submittedAt: 20_000, answers: Object.fromEntries(items.map(({ id, correct }) => [id, correct])) };
+      const [fresh] = timedEvidence(track, version, [attempt]);
+      assert.ok(fresh?.fresh && fresh.met, track.code);
+      assert.equal(fresh.total, revised ? 60 : track.count, "unscored questions excluded from benchmark");
+      assert.equal(timedEvidence(track, version, [{ ...attempt, priorExposure: [items[0].id] }])[0].met, false, "reuse is review evidence");
+      assert.equal(timedEvidence(track, version, [{ ...attempt, priorExposure: undefined }])[0].met, false, "legacy exposure remains unknown");
+      assert.equal(timedEvidence(track, version, [{ ...attempt, deadline: null }])[0].met, false, "untimed results cannot meet the benchmark");
+      assert.deepEqual(timedEvidence(track, version, [{ ...attempt, itemIds: attempt.itemIds.slice(1) }]), []);
+      assert.equal(benchmarkEvidence(track, version, emptyReadiness, [attempt], 20_000).met, false, "one timed score alone cannot meet the benchmark");
+      const due = 10_000 + 7 * 86_400_000;
+      const capstones = solved.filter(([id, guide]) => id === track.id && guide === version).map(([id, guide, stage, artifact]) => ({
+        ...scoreCapstone(id, guide, stage, artifact), id: `${id}-${stage}`, submittedAt: stage === "capstone" ? 10_000 : due,
+      }));
+      assert.equal(benchmarkEvidence(track, version, { ...emptyReadiness, capstones }, [attempt], due - 1).met, false, "delayed case timing is enforced");
+      assert.equal(benchmarkEvidence(track, version, { ...emptyReadiness, capstones }, [attempt], due).met, true);
+    }
+  }
+  assert.equal(guided, revisedActivities.length);
+  assert.equal(scenarios.size, 14);
+  console.log(`${guided} revised guided objectives and ${scenarios.size} role-specific practical cases across four pathways`);
+}
+
 function checkCasework() {
   const expected = portfolio.filter(({ id, kind }) => kind !== "dispatch" && !hasAssignmentWork(id));
   assert.deepEqual(new Set(Object.keys(cityCasework)), new Set(expected.map(({ id }) => id)));
@@ -255,6 +345,7 @@ checkPortfolios();
 checkRehearsals();
 checkFieldwork();
 checkCasework();
+checkPreparation();
 
 async function storageChecks() {
   const stored = new Map();
@@ -262,6 +353,25 @@ async function storageChecks() {
     getItem: (key) => stored.get(key) ?? null,
     setItem: (key, value) => stored.set(key, value),
   } };
+  for (const track of tracks) {
+    assert.equal(readReadiness(track), null);
+    const version = decemberBlueprint(track) ? decemberVersion : "july-2026";
+    const choices = bridges[track.id].checkpoints.map(({ correct }) => correct);
+    assert.ok((await updateReadiness(track, emptyReadiness, { type: "version", version })).saved);
+    assert.equal((await updateReadiness(track, emptyReadiness, { type: "bridge", choices })).error, null);
+    assert.deepEqual(readReadiness(track).bridge, choices);
+    if (version === decemberVersion) {
+      await updateReadiness(track, emptyReadiness, { type: "guide", objective: "1.1" });
+      assert.deepEqual(readReadiness(track).guide, ["1.1"]);
+      assert.equal((await updateReadiness(track, emptyReadiness, { type: "workshop" })).error, null);
+      assert.equal(readReadiness(track).workshop, true);
+    }
+    const definition = getCapstoneDefinition(track.id, version, "transfer");
+    const attempt = { ...scoreCapstone(track.id, version, "transfer", initialCapstoneDraft(definition)), id: `${track.id}-locked`, submittedAt: Date.now() };
+    assert.match((await updateReadiness(track, emptyReadiness, { type: "submission", attempt })).error, /locked/);
+    assert.equal(readReadiness(track).capstones.length, 0);
+    assert.equal(readReadiness(track).version, version);
+  }
   for (const track of tracks.filter(({ id }) => isCityAssignment(id))) {
     const assignment = assignments[track.id];
     const decisions = assignment.controls.reduce((runs, control) => runs.flatMap((run) =>
@@ -380,6 +490,42 @@ async function storageChecks() {
   const timed = await updateProgress(track, emptyProgress, { type: "submit", id: expired.id });
   assert.equal(timed.progress.attempts.length, 2);
   assert.deepEqual(timed.progress.attempts[1].answers, {});
+  const firstRehearsal = createSession(track, "assessment", null, true, [], now, [], "july-2026");
+  const { form: _form, priorExposure: _priorExposure, ...oldDraft } = firstRehearsal;
+  stored.set(progressKey(track), JSON.stringify({ ...timed.progress, draft: oldDraft }));
+  assert.deepEqual(sessionItems(track, readProgress(track).draft), rehearsalItems(track.id));
+  assert.equal(readProgress(track).draft.priorExposure, undefined);
+  const firstTimed = await updateProgress(track, emptyProgress, { type: "submit", id: oldDraft.id });
+  assert.equal(firstTimed.saved, true);
+  const julyForms = rehearsalForms(track.id, "july-2026", firstTimed.progress.attempts);
+  assert.equal(julyForms[0].exposed, firstRehearsal.itemIds.length);
+  assert.equal(julyForms[0].completed, true);
+  assert.equal(julyForms[1].exposed, 0);
+  const oldGuideAlternate = createSession(track, "assessment", null, true, [], now, [], "july-2026", "retest");
+  await updateProgress(track, emptyProgress, { type: "start", draft: oldGuideAlternate });
+  await updateProgress(track, emptyProgress, { type: "submit", id: oldGuideAlternate.id });
+  const modernForms = rehearsalForms(track.id, decemberVersion, readProgress(track).attempts);
+  assert.equal(modernForms[0].completed, false);
+  assert.ok(modernForms[0].exposed > 0, "legacy cross-guide question overlap must be disclosed");
+  assert.equal(modernForms[1].exposed, 0, "either July form leaves the December alternate fresh");
+  const staleDraft = createSession(track, "assessment", null, true, [], now, [], decemberVersion, "retest");
+  assert.equal((await updateProgress(track, emptyProgress, { type: "start", draft: staleDraft })).saved, true);
+  assert.equal(readProgress(track).draft.form, "retest");
+  assert.deepEqual(readProgress(track).draft.priorExposure, []);
+  assert.ok(readProgress(track).seen.includes(staleDraft.itemIds[0]));
+  await updateProgress(track, emptyProgress, { type: "move", id: staleDraft.id, index: 3 });
+  assert.equal(readProgress(track).draft.index, 3);
+  assert.deepEqual(readProgress(track).draft.priorExposure, [], "viewing a question during the current attempt leaves its baseline fresh");
+  assert.ok(readProgress(track).seen.includes(staleDraft.itemIds[3]));
+  await updateProgress(track, emptyProgress, { type: "discard", id: staleDraft.id });
+  const newDraft = createSession(track, "assessment", null, true, [], Date.now(), [], decemberVersion, "retest");
+  const restarted = await updateProgress(track, emptyProgress, { type: "start", draft: newDraft });
+  assert.deepEqual(restarted.progress.draft.priorExposure, [newDraft.itemIds[0], newDraft.itemIds[3]], "storage must account for earlier exposures missing from the client snapshot");
+  assert.deepEqual(readProgress(track).draft.priorExposure, restarted.progress.draft.priorExposure);
+  await updateProgress(track, emptyProgress, { type: "discard", id: newDraft.id });
+  assert.ok((await updateProgress(track, emptyProgress, {
+    type: "start", draft: { ...newDraft, itemIds: newDraft.itemIds.slice(0, -1) },
+  })).error, "reject a truncated alternate form");
   assert.equal(readProgress(tracks[1]), null);
   stored.set(progressKey(track), "{corrupt");
   assert.equal(readProgress(track), null);

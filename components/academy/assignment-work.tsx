@@ -62,7 +62,7 @@ const routeLabels: Record<InvoiceRoute, string> = {
 };
 
 function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
-  const [sourceId, setSourceId] = useState<string>("304");
+  const [sourceId, setSourceId] = useState<string>("303");
   const [panel, setPanel] = useState<"examples" | "ledger" | "exceptions">("examples");
   const replay = useReplayHeading<KitchenWork>();
   const source = invoices.find(({ id }) => id === sourceId)!;
@@ -70,6 +70,7 @@ function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
   const result = runKitchen(value);
   const batch = replay.run === value || actions.saved ? result : null;
   const current = result.rows.find(({ id }) => id === sourceId)!;
+  const tested = batch?.rows.find(({ id }) => id === sourceId);
 
   function putExample(status: string) {
     const examples = value.examples.filter(({ source }) => source !== sourceId);
@@ -99,6 +100,7 @@ function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
         </dl>
         {source.id === "304" && <p>{source.description}</p>}
         <div className="kitchen-output" aria-live="polite"><span>Extractor preview</span><code>{current.extracted}</code><p>{current.reason}</p></div>
+        {tested && <div className="kitchen-replay-stamp" data-posted={tested.tray === "posted"}><strong>{tested.tray === "posted" ? "Posted in this replay" : "Held in this replay"}</strong><p>{tested.reason}</p></div>}
       </article>
       <div className="kitchen-binder">
         <nav className="assignment-switch" aria-label="Receiving controls">

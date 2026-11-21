@@ -11,18 +11,10 @@ import type { MissionRecord } from "../../lib/claude/pathway";
 import { ConversationAction, ConversationFrame } from "../city-conversation";
 import { AssignmentWorkArea } from "./assignment-work";
 import { caseworkFor } from "../../lib/claude/cases";
+import { roomFirstAction, sourcesForSection } from "../../lib/claude/cases/presentation";
 import { CaseWorkbench } from "./case-workbench";
 
 export type BuildingStation = "stakeholder-0" | "stakeholder-1" | "work" | "evidence";
-
-const labFirstActions: Record<AssignmentWorkId, string> = {
-  "kitchen-extract": "Start with Invoice 303. Compare what the supplier printed with what the item lines add up to.",
-  "printworks-rules": "Start on the naming convention. Ask yourself which instructions a colleague opening a fresh copy needs to see.",
-  "archive-coordination": "Start with the two worker packets. Find the search that’s already complete and the district still missing from the report.",
-  "library-desk": "Open a fresh test chat with the current setup. Look at the source behind its answer and compare it with the policy shelf.",
-  "printworks-stream": "Step through the chunks of the first recorded proof. Look for the piece that ends halfway through a line.",
-  "library-retrieval-architecture": "Run the current search, then compare the results for the record number and the plain-language question.",
-};
 
 export function BuildingAssignmentDialog({ mission, id, experience, station, dialog, record, caseFiles, onClose, onChange, onSaved, onWork, onLegacyReplay, moduleProgress }: {
   mission: Mission;
@@ -84,12 +76,14 @@ export function BuildingAssignmentDialog({ mission, id, experience, station, dia
   const evidence = mission.kind === "workbench"
     ? mission.decisions.map(({ objective, station: name, evidence }) => ({ id: objective, name, evidence }))
     : caseFiles ?? [];
+  const firstSource = exercise && sourcesForSection(mission.id, exercise, 0)[0]?.[0];
 
   return <ConversationFrame dialog={dialog} title={station === "work" ? mission.title : station === "evidence" ? "Case file" : experience.room}
     name={person.name} role={person.role} portrait={person.portrait}
     moduleProgress={moduleProgress}
     step={station === "work" ? station : answered ? "answer" : "opening"}
     variant={station === "work" || station === "evidence" ? "workbench" : "conversation"}
+    room={station === "work" || station === "evidence" ? experience.room : undefined}
     onClose={() => { onClose(); void pending.current.then(onChange); }}>
     {station === "work" && exercise ? <CaseWorkbench mission={mission} exercise={exercise} record={record}
       speaker={person.name}
@@ -97,7 +91,7 @@ export function BuildingAssignmentDialog({ mission, id, experience, station, dia
       legacyReplay={onLegacyReplay && <button type="button" className="button button-text" onClick={onLegacyReplay}>Open work from the earlier version</button>} />
     : station === "work" && id ? <>
       <div className="casework lab-start">
-        <blockquote className="casework-opening">“{labFirstActions[id]}” <cite>{person.name}</cite></blockquote>
+        <blockquote className="casework-opening">“{roomFirstAction(mission.id, person.opening)}” <cite>{person.name}</cite></blockquote>
       </div>
       <AssignmentWorkArea id={id} draft={draft} savedWork={record?.work} busy={busy} change={change} save={(work) => void save(work)} />
       <details className="conversation-file assignment-work-notes">
@@ -110,7 +104,7 @@ export function BuildingAssignmentDialog({ mission, id, experience, station, dia
       </details>
     </> : station === "evidence" ? <section className="building-case-file" aria-label={mission.title}>
       <header><BookOpen size={22} aria-hidden="true" /><div><h3>{mission.title}</h3><p>{experience.arrival}</p></div></header>
-      {exercise ? exercise.references.map(([name, facts]) => <details className="conversation-file" key={name}>
+      {exercise ? exercise.references.map(([name, facts]) => <details className="conversation-file" key={name} open={name === firstSource}>
         <summary>{name}</summary><p>{facts}</p>
       </details>) : evidence.map(({ id, name, evidence: facts }) => <details className="conversation-file" key={id}>
         <summary>{name}</summary><p>{facts}</p>

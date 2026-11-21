@@ -9,7 +9,7 @@ const delegationSettings = [
   ["Draft the final public notice from verified facts", "review", "The source is approved. An editor still checks the draft before publication."],
 ] as const;
 
-function EditorialWorkshop() {
+function EditorialWorkshop({ onComplete }: { onComplete: () => void }) {
   const [routes, setRoutes] = useState<string[]>([]);
   const [included, setIncluded] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -45,7 +45,10 @@ function EditorialWorkshop() {
       <ExternalLink href="https://www.anthropic.com/ai-fluency/overview">Anthropic AI Fluency framework</ExternalLink>
     </section>}
     <button type="button" className="academy-button secondary" disabled={routes.filter(Boolean).length !== delegationSettings.length}
-      onClick={() => setResult(true)}><Play size={15} aria-hidden="true" /> Run the publication case</button>
+      onClick={() => {
+        setResult(true);
+        if (!included && checked && delegationSettings.every(([, expected], index) => routes[index] === expected)) onComplete();
+      }}><Play size={15} aria-hidden="true" /> Run the publication case</button>
   </div>;
 }
 
@@ -64,7 +67,7 @@ const judgePairs = [
   ] },
 ] as const;
 
-function EvaluationWorkshop() {
+function EvaluationWorkshop({ onComplete }: { onComplete: () => void }) {
   const [rubric, setRubric] = useState("detail");
   const [swap, setSwap] = useState(false);
   const [result, setResult] = useState(false);
@@ -100,11 +103,14 @@ function EvaluationWorkshop() {
       <p>This fixture checks for the exact source phrase. A production judge must also accept a faithful paraphrase and reject claims that contradict surrounding evidence. Validate those cases with independently labeled examples.</p>
       <ExternalLink href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic evaluation design</ExternalLink>
     </section>}
-    <button type="button" className="academy-button secondary" onClick={() => setResult(true)}><Play size={15} aria-hidden="true" /> Run the calibration set</button>
+    <button type="button" className="academy-button secondary" onClick={() => {
+      setResult(true);
+      if (swap && agreement === rows.length) onComplete();
+    }}><Play size={15} aria-hidden="true" /> Run the calibration set</button>
   </div>;
 }
 
-function DeploymentWorkshop() {
+function DeploymentWorkshop({ onComplete }: { onComplete: () => void }) {
   const [runtime, setRuntime] = useState("managed");
   const [trace, setTrace] = useState("full");
   const [retry, setRetry] = useState("immediate");
@@ -136,17 +142,20 @@ function DeploymentWorkshop() {
       </ul>
       <ExternalLink href="https://platform.claude.com/docs/en/managed-agents/overview">Anthropic runtime and environment guide</ExternalLink>
     </section>}
-    <button type="button" className="academy-button secondary" onClick={() => setResult(true)}><Play size={15} aria-hidden="true" /> Replay the timeout and review custody</button>
+    <button type="button" className="academy-button secondary" onClick={() => {
+      setResult(true);
+      if (!copies && recovery) onComplete();
+    }}><Play size={15} aria-hidden="true" /> Replay the timeout and review custody</button>
   </div>;
 }
 
-export function DecemberWorkshop({ track }: { track: TrackId }) {
+export function DecemberWorkshop({ track, completed, onComplete }: { track: TrackId; completed: boolean; onComplete: () => void }) {
   const workshop = track === "associate-foundations" ? [FileCheck2, EditorialWorkshop] as const
     : track === "developer-foundations" ? [GitCompareArrows, EvaluationWorkshop] as const
     : [Network, DeploymentWorkshop] as const;
   const [Icon, Content] = workshop;
   return <details className="academy-panel academy-december-workshop">
-    <summary><Icon size={20} aria-hidden="true" /> Practice the revised exam skills <ArrowRight size={15} aria-hidden="true" /></summary>
-    <Content />
+    <summary><Icon size={20} aria-hidden="true" /> December workshop {completed && <span className="academy-positive">Completed</span>} <ArrowRight size={15} aria-hidden="true" /></summary>
+    <Content onComplete={onComplete} />
   </details>;
 }

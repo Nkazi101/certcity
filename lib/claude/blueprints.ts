@@ -26,6 +26,7 @@ export type Track = {
 
 export const blueprint = "2026-07.v1";
 export const blueprintLabel = "Exam guide v1.0 · July 2026";
+export const architectFoundationsLabel = "Exam guide v1.1 · November 2026";
 export const partnerCatalog = "https://anthropic-partners.skilljar.com/page/partner-certifications";
 export const partnerFAQ = "https://anthropic-partners.skilljar.com/page/faq-certifications";
 export const pearson = "https://www.pearsonvue.com/us/en/anthropic.html";
@@ -75,7 +76,7 @@ export const tracks: readonly Track[] = [
     id: "architect-foundations", code: "CCAR-F", role: "Architect", level: "Foundations",
     description: "Design production agent systems. Practice orchestration, tool contracts, Claude Code workflows, and reliability under failure.",
     count: 60, fee: 125, place: "dispatch", assignment: "Repair the order lookup",
-    guide: `${guideRoot}/1783542750%2FClaude+Certified+Architect+%E2%80%93+Foundations+Exam+Guide.pdf`,
+    guide: "https://cc.sj-cdn.net/instructor/6nizmqk8tpzpfjvt6qmmav7rh/public/1794946250/Claude_Certified_Architect_-_Foundations_Exam_Guide.pdf",
     prep: `${academy}/page/claude-certified-architect-foundations-prep-courses`,
     domains: [
       domain(1, "Agent architecture and orchestration", 27, "Run the agent loop", "Coordinate specialist agents", "Invoke workers with scoped context", "Enforce prerequisites and handoffs", "Intercept or transform tool calls with hooks", "Decompose complex work", "Resume or branch a session"),

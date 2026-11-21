@@ -245,9 +245,9 @@ function stationEquipment(kit: ModelKit, room: THREE.Group, palette: Palette, su
   }
 }
 
-export type MissionRoom = { kind: RoomKind; room: string; workId?: AssignmentWorkId; surface?: WorkLayout["kind"] };
+export type MissionRoom = { kind: RoomKind; room: string; missionId?: string; workId?: AssignmentWorkId; surface?: WorkLayout["kind"] };
 
-export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, room: roomName, workId, surface }: MissionRoom): Environment {
+export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, room: roomName, missionId, workId, surface }: MissionRoom): Environment {
   const palette = palettes[kind];
   scene.background = new THREE.Color("#9eb28a");
   const interior = new THREE.Group();
@@ -301,8 +301,19 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
     market: [1.1, -1.2, 3.2, 1.35, 1.54], school: [-3.55, -1.35, 4, 1.35, 1.54],
     courthouse: [-2.1, -1.2, 4.3, 1.15, 1.96], dispatch: [0, -2.2, 3.25, 1.2, 1.61],
   };
-  const station = workId ? workstations[workId] : roomStations[kind];
-  if (surface) stationEquipment(kit, interior, palette, surface, station[0], kind === "courthouse" ? 1.51 : 1.03, station[1]);
+  const station = workId ? workstations[workId] : missionId === "supplier-invoices" ? workstations["kitchen-extract"] : roomStations[kind];
+  const stationHeight = missionId === "supplier-invoices" || workId === "kitchen-extract" || kind === "courthouse" ? 1.51 : 1.03;
+  if (surface) stationEquipment(kit, interior, palette, surface, station[0], stationHeight, station[1]);
+  if (missionId === "market-bulletin") {
+    kit.sign(interior, "FRIDAY BULLETIN", [3.2, 1.9, -3.91], 2.65, [palette.trim, "#fff1d0"]);
+    for (const x of [2.25, 3.2, 4.15]) {
+      kit.box(interior, [x, 1.2, -3.915], [.65, .73, .025], paper, true);
+      for (const y of [1, 1.16, 1.32]) kit.box(interior, [x, y, -3.89], [.4, .032, .012], kit.material(palette.accent));
+    }
+  }
+  if (missionId === "regional-operations") {
+    kit.sign(interior, "INCIDENT W-19", [2.2, 2.86, -5.0], 2.25, [palette.trim, "#fff1d0"]);
+  }
   kit.batch(interior);
   residents[1].person.position.set(Math.min(6.15, station[0] + station[2] * .5 + .7), .31, station[1] + 1.1);
   const points = [
@@ -315,7 +326,7 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
   {
     scene.add(incoming, finished);
     const [x, z] = station;
-    const height = workId === "kitchen-extract" || kind === "courthouse" ? 1.51 : 1.03;
+    const height = stationHeight;
     const offset = workId === "archive-coordination" ? -.92 : .9;
     const green = kit.material("#698c70");
     const px = x + offset;

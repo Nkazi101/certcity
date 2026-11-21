@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { places } from "../../lib/world";
 import { trackHref, tracks, trackTitle } from "../../lib/claude/blueprints";
+import { examGuideLabel } from "../../lib/claude/december-blueprints";
 import type { Track } from "../../lib/claude/blueprints";
 import { missionMappings } from "../../lib/claude/missions";
 import type { Mission } from "../../lib/claude/missions";
@@ -40,12 +41,13 @@ export function CityCertificationDialog({ dialog, selected, onSelect }: {
   );
 }
 
-export function MissionJournal({ dialog, track, records, legacy, progress, dispatchDueAt, onMission, onStudy, onChangeTrack }: {
+export function MissionJournal({ dialog, track, records, legacy, progress, requestedMission, dispatchDueAt, onMission, onStudy, onChangeTrack }: {
   dialog: RefObject<HTMLDialogElement | null>;
   track: Track;
   records: PortfolioRecords;
   legacy: ReadonlySet<string>;
   progress: boolean;
+  requestedMission?: string | null;
   onMission: (mission: Mission) => void;
   onStudy: (mission: Mission, page: "check" | "followup") => void;
   dispatchDueAt?: number | null;
@@ -63,6 +65,17 @@ export function MissionJournal({ dialog, track, records, legacy, progress, dispa
       window.removeEventListener("focus", refresh);
     };
   }, [dialog]);
+  useEffect(() => {
+    const journal = dialog.current;
+    if (!requestedMission || !journal) return;
+    if (!journal.open) journal.showModal();
+    const frame = requestAnimationFrame(() => {
+      const row = document.getElementById(`journal-${requestedMission}`);
+      row?.focus({ preventScroll: true });
+      row?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [dialog, requestedMission]);
   const evidence = portfolioEvidence(track, records, legacy);
   const schedule = evidence.missions.flatMap((mission) => {
     const record = records[mission.id];
@@ -91,7 +104,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, dispa
           <span className="city-certification-icon">{showLocked ? <Lock size={17} aria-hidden="true" /> : done ? <Check size={18} aria-hidden="true" /> : <MapPin size={19} aria-hidden="true" />}</span>
           <span><strong>{mission.title}</strong><small>{place.name}{!showLocked && (records[mission.id]?.caseDraft || records[mission.id]?.workDraft || (!records[mission.id]?.casework && records[mission.id]?.draft)) && " · Draft saved"}{showLocked && ` · ${blockers}`}</small></span>
         </>;
-        return <li key={mission.id}>{showLocked
+        return <li key={mission.id} id={`journal-${mission.id}`} tabIndex={requestedMission === mission.id ? -1 : undefined}>{showLocked
           ? <div className="mission-locked">{label}{!unmet.length && !!reviewMissions.length && <div className="mission-blocker-links">
             {reviewMissions.map((entry) => <button className="button button-outline" type="button" key={entry.id}
               onClick={() => onMission(entry)}>Revisit {entry.title}</button>)}
@@ -109,7 +122,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, dispa
         <button className="icon-button" type="button" aria-label={`Close ${heading.toLowerCase()}`} onClick={() => dialog.current?.close()}><X size={20} aria-hidden="true" /></button>
       </header>
       <div className="dialog-body mission-journal-body">
-        <p>{trackTitle(track)} · July 2026 guide</p>
+        <p>{trackTitle(track)} · {examGuideLabel(track)}</p>
         <div className="mission-progress-summary">
           <div><strong>{completed.length}/{evidence.missions.length}</strong><span>Assignments saved</span></div>
           <div><strong>{evidence.applied.size}/{total}</strong><span>Objectives applied in the city</span></div>
@@ -131,7 +144,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, dispa
             <details className="academy-domain" key={domain.id}>
               <summary><span><strong>{domain.title}</strong><small>{domain.objectives.filter((_, i) => evidence.applied.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} applied in the city · {domain.objectives.filter((_, i) => evidence.demonstrated.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} correct on first-seen checks
               {domain.objectives.some((_, i) => evidence.retained.has(`${domain.id}.${i + 1}`)) && ` · ${domain.objectives.filter((_, i) => evidence.retained.has(`${domain.id}.${i + 1}`)).length} recalled at follow-up`}
-              </small></span><span className="academy-weight">{domain.weight}% in July guide</span></summary>
+              </small></span><span className="academy-weight">{domain.weight}% of exam</span></summary>
               <ul className="academy-objectives">
                 {domain.objectives.map((name, index) => {
                   const code = `${domain.id}.${index + 1}` as const;
@@ -146,7 +159,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, dispa
           ))}
         </> : <>
           <section><h3>Available now</h3>{available.length ? rows(available) : <p>All currently available work is complete.</p>}</section>
-          {!!locked.length && <details className="conversation-file"><summary>Later missions · {locked.length}</summary>{rows(locked, true)}</details>}
+          {!!locked.length && <details className="conversation-file" open={locked.some(({ id }) => requestedMission === id) || undefined}><summary>Later missions · {locked.length}</summary>{rows(locked, true)}</details>}
           {!!completed.length && <details className="conversation-file"><summary>Completed missions · {completed.length}</summary>{rows(completed)}</details>}
         </>}
         <div className="conversation-actions">

@@ -1,8 +1,9 @@
 import { ArrowLeft, ArrowRight, Check, Clock3 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { isCorrect } from "../../lib/certification-progress";
-import { decemberVersion, rehearsalBlueprint } from "../../lib/claude/december-blueprints";
+import { decemberVersion, examGuideLabel, rehearsalBlueprint } from "../../lib/claude/december-blueprints";
 import type { Track } from "../../lib/claude/blueprints";
+import { rehearsalFormLabel } from "../../lib/claude/assessment/forms";
 import { sources } from "../../lib/claude/items";
 import type { PracticeItem } from "../../lib/claude/items";
 import { itemDomain, objectiveTitle, responseComplete, score, sessionItems } from "../../lib/claude/practice";
@@ -16,10 +17,10 @@ export function dueLabel(due: number) {
   return dueFormat.format(due);
 }
 
-export function modeLabel(track: Track, record: Pick<Session, "mode" | "domain" | "version">) {
+export function modeLabel(track: Track, record: Pick<Session, "mode" | "domain" | "version" | "form">) {
   if (record.mode === "mixed") return "Mixed practice";
   if (record.mode === "followup") return "Seven-day follow-up";
-  if (record.mode === "assessment") return "Timed exam rehearsal";
+  if (record.mode === "assessment") return rehearsalFormLabel(record.form);
   return track.domains.find(({ id }) => id === record.domain)?.title ?? "Domain practice";
 }
 
@@ -49,6 +50,8 @@ export function PracticeSession({ track, session, error, busy, onMove, onChoose,
   const seconds = session.deadline ? Math.max(0, Math.ceil((session.deadline - now) / 1000)) : null;
   const expired = seconds === 0;
   const required = question.correct.length;
+  const isRehearsal = session.mode === "assessment";
+  const saveExposureOnRender = !isRehearsal || session.priorExposure === undefined;
   const nextUnanswered = items.findIndex((entry) => !responseComplete(entry, displayedAnswers));
 
   useEffect(() => {
@@ -58,8 +61,8 @@ export function PracticeSession({ track, session, error, busy, onMove, onChoose,
   }, [session.deadline]);
 
   useEffect(() => {
-    onPresent(session.id, question.id);
-  }, [session.id, question.id, onPresent]);
+    if (saveExposureOnRender) onPresent(session.id, question.id);
+  }, [session.id, question.id, saveExposureOnRender, onPresent]);
 
   async function go(index: number) {
     setConfirmSubmit(false);
@@ -84,16 +87,16 @@ export function PracticeSession({ track, session, error, busy, onMove, onChoose,
       <div className="academy-workspace-title">
         <p className="academy-kicker">{track.code}</p>
         <h1>{modeLabel(track, session)}</h1>
-        <p>{complete} of {items.length} answered{session.mode === "assessment" && ` · Guide ${session.version === decemberVersion ? "v1.1" : "v1.0"}`}</p>
+        <p>{complete} of {items.length} answered{isRehearsal && ` · ${examGuideLabel(track, session.version)}`}</p>
       </div>
       <div className="academy-session-layout">
         <section className="academy-panel academy-question" aria-labelledby="question-title">
-          <p className="academy-kicker" ref={questionHeading} tabIndex={-1}>Question {session.index + 1} of {items.length}</p>
+          <p className="academy-kicker">Question {session.index + 1} of {items.length}</p>
           <p className="academy-scenario">{question.scenario}</p>
           {question.context && <details className="academy-case-context" open>
             <summary>Case brief</summary><p>{question.context}</p>
           </details>}
-          <h2 id="question-title">{question.prompt}</h2>
+          <h2 id="question-title" ref={questionHeading} tabIndex={-1}>{question.prompt}</h2>
           <fieldset className="academy-fieldset" disabled={expired} aria-label={required === 1 ? "Select one response" : "Select two responses"}>
             <legend>{required === 1 ? "Select one response" : "Select two responses"}</legend>
             {question.options.map(([value, text], index) => (
@@ -128,16 +131,18 @@ export function PracticeSession({ track, session, error, busy, onMove, onChoose,
           {seconds !== null && <p className="academy-timer" aria-label="Time remaining">
             <Clock3 size={17} aria-hidden="true" /> <span role="timer">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</span>
           </p>}
-          <h2>Questions</h2>
-          <div className="academy-question-grid">
-            {items.map((entry, index) => {
-              const answered = responseComplete(entry, displayedAnswers);
-              return <button key={entry.id} type="button" data-answered={answered}
-                aria-label={`Question ${index + 1}, ${answered ? "answered" : "unanswered"}`}
-                aria-current={session.index === index ? "step" : undefined} disabled={busy || expired}
-                onClick={() => void go(index)}>{index + 1}</button>;
-            })}
-          </div>
+          <details className="academy-question-directory" open={!isRehearsal}>
+            <summary>Jump to a question</summary>
+            <div className="academy-question-grid">
+              {items.map((entry, index) => {
+                const answered = responseComplete(entry, displayedAnswers);
+                return <button key={entry.id} type="button" data-answered={answered}
+                  aria-label={`Question ${index + 1}, ${answered ? "answered" : "unanswered"}`}
+                  aria-current={session.index === index ? "step" : undefined} disabled={busy || expired}
+                  onClick={() => void go(index)}>{index + 1}</button>;
+              })}
+            </div>
+          </details>
           <progress aria-label="Questions answered" max={items.length} value={complete} />
         </aside>
       </div>
@@ -189,7 +194,7 @@ export function PracticeReview({ track, attempt, due, onBack, onDomain }: {
     <main className="academy-width academy-workspace">
       <button className="academy-back" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back to pathway</button>
       <div className="academy-workspace-title">
-        <p className="academy-kicker">{modeLabel(track, attempt)} · {dateFormat.format(attempt.submittedAt)}{attempt.mode === "assessment" && ` · Guide ${attempt.version === decemberVersion ? "v1.1" : "v1.0"}`}</p>
+        <p className="academy-kicker">{modeLabel(track, attempt)} · {dateFormat.format(attempt.submittedAt)}{attempt.mode === "assessment" && ` · ${examGuideLabel(track, attempt.version)}`}</p>
         <h1>{attempt.mode === "assessment" ? "Rehearsal results" : "Practice results"}</h1>
         <p className="academy-result-score"><strong>{count} / {scored.length}</strong> correct</p>
         {due && attempt.mode === "mixed" && <p>Seven-day follow-up available {dueLabel(due)}.</p>}
@@ -197,6 +202,9 @@ export function PracticeReview({ track, attempt, due, onBack, onDomain }: {
       {attempt.mode === "assessment" && <section className="academy-panel academy-assessment-domains" aria-label="Rehearsal results by domain">
         <h2>Results by domain</h2>
         <p>Raw results for this form. Anthropic reports a separate scaled score on the official exam.</p>
+        <p>{attempt.priorExposure === undefined ? "This saved attempt predates question exposure tracking."
+          : attempt.priorExposure.length === 0 ? "Every question was fresh when you started."
+            : `${attempt.priorExposure.length} of ${items.length} questions had been seen when you started.`}</p>
         <dl>{blueprint.domains.map(({ id, title }) => {
           const group = scored.filter((item) => itemDomain(item) === id);
           return <div key={id}><dt>{title}</dt><dd>{score(group, attempt.answers)}/{group.length}</dd></div>;

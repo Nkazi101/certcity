@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "check:claude": "node scripts/check-claude-content.cjs",
+    "check:claude": "node scripts/check-claude-content.cjs && node scripts/check-claude-capstones.cjs",
     "check:city": "node scripts/check-city-routes.cjs"
   },
   "engines": {

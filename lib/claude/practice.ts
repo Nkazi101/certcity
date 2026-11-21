@@ -5,7 +5,8 @@ import { architectBank } from "./architect";
 import { professionalBank } from "./professional";
 import type { PracticeBank, PracticeItem } from "./items";
 import { examMinutes } from "./blueprints";
-import { rehearsalItems } from "./assessment/forms";
+import { rehearsalFormIds, rehearsalItems } from "./assessment/forms";
+import type { RehearsalForm } from "./assessment/forms";
 import type { ExamVersion } from "./december-blueprints";
 import type { Track, TrackId } from "./blueprints";
 
@@ -22,6 +23,8 @@ export type Session = {
   id: string;
   mode: PracticeMode;
   version?: ExamVersion;
+  form?: RehearsalForm;
+  priorExposure?: string[];
   domain: number | null;
   itemIds: string[];
   answers: Answers;
@@ -40,9 +43,9 @@ export function objectiveTitle(track: Pick<Track, "domains">, item: PracticeItem
   return track.domains.find((entry) => entry.id === domain)?.objectives[objective - 1] ?? item.objective;
 }
 
-export function sessionItems(track: Track, session: Pick<Session, "mode" | "itemIds" | "version">) {
+export function sessionItems(track: Track, session: Pick<Session, "mode" | "itemIds" | "version" | "form">) {
   const bank = banks[track.id];
-  const pool = session.mode === "assessment" ? rehearsalItems(track.id, session.version) : session.mode === "followup" ? bank.followup : bank.practice;
+  const pool = session.mode === "assessment" ? rehearsalItems(track.id, session.version, session.form) : session.mode === "followup" ? bank.followup : bank.practice;
   const byId = new Map(pool.map((entry) => [entry.id, entry]));
   return session.itemIds.flatMap((id) => {
     const entry = byId.get(id);
@@ -83,14 +86,31 @@ export function domainEvidence(track: Track, attempts: readonly Attempt[], cityE
   return { firstAnswers, firstObjectives, domainScores, domainCounts, reviewed };
 }
 
-export function createSession(track: Track, mode: PracticeMode, domain: number | null, timed: boolean, attempts: readonly Attempt[], now: number, exposed: Iterable<string> = [], version?: ExamVersion): Session {
+export function rehearsalPriorExposure(itemIds: readonly string[], attempts: readonly Attempt[], exposed: Iterable<string> = []) {
+  const seen = new Set([...exposed, ...attempts.flatMap((attempt) => attempt.itemIds)]);
+  return itemIds.filter((id) => seen.has(id));
+}
+
+export function rehearsalForms(track: TrackId, version: ExamVersion | undefined, attempts: readonly Attempt[], exposed: Iterable<string> = []) {
+  const seen = new Set([...exposed, ...attempts.flatMap((attempt) => attempt.itemIds)]);
+  return rehearsalFormIds.map((form) => {
+    const items = rehearsalItems(track, version, form);
+    return {
+      form, items, exposed: items.filter(({ id }) => seen.has(id)).length,
+      completed: attempts.some((attempt) => attempt.mode === "assessment" &&
+        (attempt.version ?? "july-2026") === (version ?? "july-2026") && (attempt.form ?? "original") === form),
+    };
+  });
+}
+
+export function createSession(track: Track, mode: PracticeMode, domain: number | null, timed: boolean, attempts: readonly Attempt[], now: number, exposed: Iterable<string> = [], version?: ExamVersion, form: RehearsalForm = "original"): Session {
   const bank = banks[track.id];
   const seen = new Set([...domainEvidence(track, attempts).reviewed, ...exposed]);
   const questions = (id: number) => bank.practice.filter((entry) => itemDomain(entry) === id)
     .sort((a, b) => Number(seen.has(a.id)) - Number(seen.has(b.id)));
   let items: readonly PracticeItem[];
   if (mode === "assessment") {
-    items = rehearsalItems(track.id, version);
+    items = rehearsalItems(track.id, version, form);
   } else if (mode === "followup") {
     items = bank.followup;
   } else if (mode === "domain") {
@@ -109,9 +129,11 @@ export function createSession(track: Track, mode: PracticeMode, domain: number |
     items = Array.from({ length: Math.max(...groups.map(({ selected }) => selected)) }, (_, index) =>
       groups.flatMap(({ pool, selected }) => index < selected ? [pool[index]] : [])).flat();
   }
+  const itemIds = items.map(({ id }) => id);
   return {
     id: globalThis.crypto?.randomUUID?.() ?? `${now}-${Math.random().toString(36).slice(2)}`,
-    mode, ...(mode === "assessment" && version && { version }), domain, itemIds: items.map(({ id }) => id), answers: {}, index: 0, startedAt: now,
+    mode, ...(mode === "assessment" && { ...(version && { version }), form, priorExposure: rehearsalPriorExposure(itemIds, attempts, seen) }),
+    domain, itemIds, answers: {}, index: 0, startedAt: now,
     deadline: mode === "assessment" ? now + examMinutes * 60_000
       : timed ? now + Math.ceil(items.length * examMinutes / track.count) * 60_000 : null,
   };

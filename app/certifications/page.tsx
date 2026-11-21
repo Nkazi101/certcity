@@ -4,7 +4,6 @@ import { ArrowRight, MapPin } from "lucide-react";
 import { AcademyHeader, ExamAccess, trackIcons } from "../../components/academy/chrome";
 import { AcademyCatalogProgress } from "../../components/academy/catalog-progress";
 import { cityAssignmentHref, trackHref, tracks } from "../../lib/claude/blueprints";
-import { banks } from "../../lib/claude/practice";
 
 export const metadata: Metadata = { title: "Claude certifications" };
 
@@ -15,7 +14,7 @@ export default function Certifications() {
       <main className="academy-width academy-catalog">
         <div className="academy-workspace-title">
           <h1>Claude exam practice</h1>
-          <p>Review a credential’s exam guide or practice a skill you used on a city assignment.</p>
+          <p>Choose a role, work through its city assignments, and see what you can do in independent cases and timed exam rehearsals.</p>
         </div>
         <section aria-labelledby="pathway-title">
           <div className="academy-section-heading">
@@ -36,7 +35,7 @@ export default function Certifications() {
                   <div className="academy-card-foot">
                     <Link className="academy-catalog-action" href={cityAssignmentHref(track)}><MapPin size={16} aria-hidden="true" />Enter city pathway<ArrowRight size={16} aria-hidden="true" /></Link>
                     <Link className="academy-catalog-action" href={trackHref(track)}>
-                      <AcademyCatalogProgress trackId={track.id} questions={banks[track.id].practice.length} />
+                      <AcademyCatalogProgress trackId={track.id} />
                       <ArrowRight size={16} aria-hidden="true" />
                     </Link>
                   </div>

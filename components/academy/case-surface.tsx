@@ -1,8 +1,12 @@
-import { ArrowRight, Clock3, FileText, Gauge, GitPullRequestArrow, Mail, Shield, Terminal } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Clock3, FileText, Gauge, GitPullRequestArrow, Mail, Shield, Terminal } from "lucide-react";
 import { useId, useState } from "react";
 import type { CaseDraft, CaseField, CaseValue, Casework } from "../../lib/claude/casework";
 import { caseCapacity } from "../../lib/claude/casework";
+import type { replayCasework } from "../../lib/claude/casework";
 import type { WorkLayout, WorkSection } from "../../lib/claude/cases/layouts";
+import { sourcesForSection } from "../../lib/claude/cases/presentation";
+
+type Run = ReturnType<typeof replayCasework>;
 
 type Props = {
   exercise: Casework;
@@ -72,7 +76,28 @@ function LinkedResults({ exercise, layout, draft, busy, update }: Props) {
   </div>;
 }
 
-export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
+function RunAtStation({ starting, current, stale, newArrival }: {
+  starting?: Run["checks"][number];
+  current: Run["checks"][number];
+  stale: boolean;
+  newArrival?: boolean;
+}) {
+  return <article className="case-object-result" data-passed={current.passed} data-run={newArrival ? "arrival" : "sample"} tabIndex={-1}>
+    <header><strong>{current.name}</strong><span>{stale ? "Last run" : newArrival ? "New arrival replay" : "Sample replay"}</span></header>
+    <p>{current.evidence}</p>
+    {starting && starting.effect !== current.effect && <p className="case-object-before"><small>Starting setup</small>{starting.effect}</p>}
+    <p className="case-object-effect"><small>{current.passed ? "What held" : "What needs attention"}</small>{current.effect}</p>
+  </article>;
+}
+
+export function CaseSurface({ missionId, exercise, layout, draft, busy, update, baseline, result, retest, sampleCurrent, retestCurrent }: Props & {
+  missionId: string;
+  baseline: Run;
+  result: Run | null;
+  retest: Run | null;
+  sampleCurrent: boolean;
+  retestCurrent: boolean;
+}) {
   const [active, setActive] = useState(0);
   const panel = useId();
   const fields = new Map(exercise.fields.map((field) => [field.id, field]));
@@ -80,6 +105,32 @@ export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
   const generated = exercise.output?.(draft) ?? [];
   const { kind, sections } = layout;
   const chosenSection = sections[active];
+  const retestSection = missionId === "regional-operations" ? 2 : sections.findIndex(({ fields }) =>
+    fields.includes(exercise.retest.requirements[0]?.[0]));
+  const sampleSections = exercise.cases.map((fixture) => sections.findIndex(({ fields }) =>
+    fields.includes(fixture.requirements[0]?.[0])));
+
+  function sources(index: number) {
+    const nearby = sourcesForSection(missionId, exercise, index);
+    return <div className="case-object-sources" key={index} aria-label="Source evidence">
+      {nearby.map(([name, facts], source) => <details key={name} open={source === 0}>
+        <summary>{name}</summary>
+        <p>{facts}</p>
+      </details>)}
+    </div>;
+  }
+
+  function outcomes(index: number) {
+    const checks = result?.checks.flatMap((check, checkIndex) => {
+      return sampleSections[checkIndex] === index
+        ? [<RunAtStation key={check.name} starting={baseline.checks[checkIndex]} current={check} stale={!sampleCurrent} />] : [];
+    });
+    const arrival = retest?.checks[0];
+    return <>
+      {checks}
+      {arrival && retestSection === index && <RunAtStation current={arrival} stale={!retestCurrent} newArrival />}
+    </>;
+  }
 
   function fieldControl(id: string, compact = false, buttons = false) {
     const field = fields.get(id);
@@ -96,38 +147,55 @@ export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
   if (kind === "inbox" || kind === "desk" || kind === "console") {
     return <div className="case-folder" data-folder={kind}>
       <nav aria-label={kind === "inbox" ? "Messages" : kind === "console" ? "Test stations" : "Documents"}>
-        {sections.map(({ title }, index) => <button key={title} type="button" aria-pressed={active === index}
-          aria-controls={panel} onClick={() => setActive(index)}>
-          {kind === "inbox" ? <Mail size={17} aria-hidden="true" /> : kind === "console" ? <Terminal size={17} aria-hidden="true" /> : <FileText size={17} aria-hidden="true" />}
-          {title}
-        </button>)}
+        {sections.map(({ title }, index) => {
+          const checks = result?.checks.filter((_, checkIndex) => sampleSections[checkIndex] === index) ?? [];
+          if (retest && retestSection === index) checks.push(...retest.checks);
+          const passed = checks.every((check) => check.passed);
+          const ResultIcon = passed ? Check : CircleAlert;
+          const description = checks.length ? passed ? "Replay passed" : "Replay needs attention" : undefined;
+          return <button key={title} type="button" aria-pressed={active === index} aria-controls={panel} aria-description={description} onClick={() => setActive(index)}>
+            {kind === "inbox" ? <Mail size={17} aria-hidden="true" /> : kind === "console" ? <Terminal size={17} aria-hidden="true" /> : <FileText size={17} aria-hidden="true" />}
+            {title}
+            {description && <ResultIcon className="case-folder-result" size={15} aria-hidden="true" />}
+          </button>;
+        })}
       </nav>
       <section id={panel} className="case-folder-page" aria-label={chosenSection.title}>
         <h4>{chosenSection.title}</h4>
         {kind === "inbox" && layout.arrivals?.[active] && <blockquote>
           {layout.arrivals[active].text}<cite>{layout.arrivals[active].label}</cite>
         </blockquote>}
-        {chosenSection.fields.map((id) => fieldControl(id))}
+        <div className="case-folder-working">
+          {sources(active)}
+          <div className="case-folder-fields">{chosenSection.fields.map((id) => fieldControl(id, false, missionId === "market-bulletin" && id === "send"))}</div>
+        </div>
         {kind === "inbox" && generated[0] ? <Paper title="Reply preview" content={generated[0][1].split("\n")[active] ?? ""} />
           : sectionPreview(chosenSection)}
+        {outcomes(active)}
       </section>
     </div>;
   }
 
   if (kind === "ledger" || kind === "matrix") {
     return <div className="case-sheets" data-sheet={kind}>
-      {sections.map(({ title, fields: keys }) => <table key={title}>
-        <caption>{title}</caption>
-        <thead><tr><th scope="col">{kind === "ledger" ? "Entry" : "Boundary"}</th><th scope="col">Before</th><th scope="col">Working change</th></tr></thead>
-        <tbody>{keys.map((id) => {
-          const field = fields.get(id);
-          return field && <tr key={id}>
-            <th scope="row">{field.label}</th><td>{field.initial}{"unit" in field ? " " + field.unit : ""}</td>
-            <td>{fieldControl(id, true)}</td>
-          </tr>;
-        })}</tbody>
-      </table>)}
-      {generated[0] && <Paper title={generated[0][0]} content={generated[0][1]} />}
+      {sections.map(({ title, fields: keys }, index) => <section className="case-ledger-page" key={title}>
+        <h4>{title}</h4>
+        <div className="case-ledger-working">
+          {sources(index)}
+          <table aria-label={title}>
+            <thead><tr><th scope="col">{kind === "ledger" ? "Entry" : "Boundary"}</th><th scope="col">Before</th><th scope="col">Working change</th></tr></thead>
+            <tbody>{keys.map((id) => {
+              const field = fields.get(id);
+              return field && <tr key={id}>
+                <th scope="row">{field.label}</th><td>{field.initial}{"unit" in field ? " " + field.unit : ""}</td>
+                <td>{fieldControl(id, true)}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+        {index === 0 && generated[0] && <Paper title={generated[0][0]} content={generated[0][1]} />}
+        {outcomes(index)}
+      </section>)}
     </div>;
   }
 
@@ -135,6 +203,7 @@ export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
     return <div className="case-redaction">
       <section className="case-redaction-paper">
         <h4>{sections[0].title}</h4>
+        {sources(0)}
         {layout.arrivals?.map(({ field, label, text }) => {
           const removed = draft[field] === "Remove";
           const control = fields.get(field);
@@ -146,10 +215,13 @@ export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
             </button>
           </div>;
         })}
+        {outcomes(0)}
       </section>
       <section className="case-surface-card">
         <h4><Shield size={17} aria-hidden="true" />{sections[1].title}</h4>
+        {sources(1)}
         {sections[1].fields.map((id) => fieldControl(id))}
+        {outcomes(1)}
       </section>
     </div>;
   }
@@ -158,6 +230,7 @@ export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
     return <div className="case-trace">
       <section className="case-surface-card">
         <h4><GitPullRequestArrow size={18} aria-hidden="true" />{sections[0].title}</h4>
+        {sources(0)}
         {layout.arrivals ? <LinkedResults {...{ exercise, layout, draft, busy, update }} />
           : <ol className="case-trace-sequence">
             <li>Request received</li><li>c42 · {draft.call}</li><li>{draft.connector}</li>
@@ -166,8 +239,9 @@ export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
         {layout.arrivals && generated[0] && <details className="case-trace-preview">
           <summary>Inspect the linked message</summary><Paper title={generated[0][0]} content={generated[0][1]} />
         </details>}
+        {outcomes(0)}
       </section>
-      <section className="case-surface-card"><h4>{sections[1].title}</h4>{sections[1].fields.map((id) => fieldControl(id))}</section>
+      <section className="case-surface-card"><h4>{sections[1].title}</h4>{sources(1)}{sections[1].fields.map((id) => fieldControl(id))}{outcomes(1)}</section>
     </div>;
   }
 
@@ -176,25 +250,33 @@ export function CaseSurface({ exercise, layout, draft, busy, update }: Props) {
     return <div className="case-incident">
       <section className="case-command">
         <h4><Clock3 size={19} aria-hidden="true" />{sections[0].title}</h4>
-        <ol>{sections[0].fields.map((id) => {
-          const time = capacity?.lengths.find((step) => step.id === id)?.units ?? 0;
-          elapsed += time;
-          return <li key={id} data-late={elapsed > (capacity?.limit ?? Infinity)}>
-            <time dateTime={`PT${elapsed}M`}>{elapsed} min</time>{fieldControl(id, false, true)}
-          </li>;
-        })}</ol>
+        <div className="case-command-working">
+          {sources(0)}
+          <ol>{sections[0].fields.map((id) => {
+            const time = capacity?.lengths.find((step) => step.id === id)?.units ?? 0;
+            elapsed += time;
+            return <li key={id} data-late={elapsed > (capacity?.limit ?? Infinity)}>
+              <time dateTime={`PT${elapsed}M`}>{elapsed} min{elapsed > (capacity?.limit ?? Infinity) && <CircleAlert size={14} aria-label="Over limit" />}</time>
+              {fieldControl(id, false, true)}
+            </li>;
+          })}</ol>
+        </div>
+        {outcomes(0)}
       </section>
-      {sections.slice(1).map(({ title, fields: keys }) => <section className="case-surface-card" key={title}>
-        <h4>{title}</h4>{keys.map((id) => fieldControl(id))}
+      {sections.slice(1).map(({ title, fields: keys }, index) => <section className="case-surface-card" key={title}>
+        <h4>{title}</h4>{sources(index + 1)}{keys.map((id) => fieldControl(id))}
+        {index === 0 && generated[1] && <Paper title={generated[1][0]} content={generated[1][1]} />}
+        {outcomes(index + 1)}
       </section>)}
-      {generated[1] && <Paper title={generated[1][0]} content={generated[1][1]} />}
     </div>;
   }
 
   return <div className={kind === "lanes" ? "case-lanes" : "case-review"}>
-    {sections.map(({ title, fields: keys }) => <section className="case-surface-card" key={title}>
+    {sections.map(({ title, fields: keys }, index) => <section className="case-surface-card" key={title}>
       <h4>{kind === "review" && <Gauge size={17} aria-hidden="true" />}{title}</h4>
+      {sources(index)}
       {keys.map((id) => fieldControl(id, false, kind === "lanes"))}
+      {outcomes(index)}
     </section>)}
     {kind === "review" && generated[0] && <Paper title={generated[0][0]} content={generated[0][1]} />}
   </div>;

@@ -184,6 +184,29 @@ export function mountWorld(
       else if (framing === "olive") frameOliveStreet();
     }
     fitCamera();
+    if (kind === "mission" && selected) frameMissionStation();
+  }
+
+  function frameMissionStation() {
+    if (kind !== "mission") return;
+    const open = host.parentElement?.dataset.stationOpen === "true";
+    const point = open ? environment.landmarks.find(({ id }) => id === selected) : undefined;
+    if (!point) {
+      target.set(0, .72, .25);
+      desiredZoom = 1;
+    } else {
+      const mobile = width <= 800;
+      const panelWidth = mobile ? width : Math.min(width * .7, 1200);
+      const units = verticalSpan / height;
+      desiredZoom = mobile ? 1.55 : 1.35;
+      const horizontal = mobile ? 0 : (panelWidth / 2 + 6) * units / desiredZoom;
+      const vertical = mobile ? Math.max(56, height * .36) * units / desiredZoom : 0;
+      target.copy(point.anchor);
+      target.x += Math.cos(angle) * horizontal + Math.sin(angle) * Math.sin(pitch) * vertical;
+      target.y -= Math.cos(pitch) * vertical;
+      target.z += -Math.sin(angle) * horizontal + Math.cos(angle) * Math.sin(pitch) * vertical;
+    }
+    invalidate();
   }
 
   function frameDistrict() {
@@ -222,7 +245,9 @@ export function mountWorld(
 
   function markerArea(origin: DOMRect) {
     const shell = host.closest(".game-world")?.parentElement;
-    return [...(shell?.querySelectorAll(".world-hud .wordmark, .world-hud .main-nav, .district-switcher, .city-status-hud button, .quest-hud, .camera-hud, .inspection-panel, .building-work-dock") ?? [])]
+    const hud = ".world-hud .wordmark, .world-hud .main-nav, .district-switcher, .quest-hud, .camera-hud, .inspection-panel";
+    const openStation = kind === "mission" && host.parentElement?.dataset.stationOpen === "true";
+    return [...(shell?.querySelectorAll(openStation ? hud : hud + ", .city-status-hud button, .building-work-dock") ?? [])]
       .map((element) => {
         const rect = element.getBoundingClientRect();
         return { left: rect.left - origin.left, top: rect.top - origin.top,
@@ -587,6 +612,7 @@ export function mountWorld(
       invalidate();
     },
     refreshMarkers() {
+      if (kind === "mission") frameMissionStation();
       invalidate();
     },
     select(id, fromMarker = false) {
@@ -596,6 +622,7 @@ export function mountWorld(
       selected = id;
       const site = environment.landmarks.find((landmark) => landmark.id === id);
       outline.visible = Boolean(site && !site.surface);
+      if (kind === "mission") frameMissionStation();
       if (site) {
         outline.position.set(site.anchor.x, city ? .074 : .345, site.anchor.z);
         outline.scale.set((site.bounds.max.x - site.bounds.min.x) * .64, 1, (site.bounds.max.z - site.bounds.min.z) * .74);

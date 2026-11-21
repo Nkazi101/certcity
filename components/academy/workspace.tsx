@@ -9,10 +9,10 @@ import { places } from "../../lib/world";
 import { dispatchProgressKey, meetsDispatchGoal, readDispatch, runShift } from "../../lib/shift";
 import { assignments, isCityAssignment } from "../../lib/claude/assignments";
 import {
-  blueprintLabel, cityAssignmentHref, examMinutes, examRegistration, trackTitle,
+  cityAssignmentHref, examMinutes, examRegistration, trackTitle,
 } from "../../lib/claude/blueprints";
 import type { Track } from "../../lib/claude/blueprints";
-import { banks, createSession, domainEvidence, followupDue, itemDomain, score, sessionItems } from "../../lib/claude/practice";
+import { banks, createSession, domainEvidence, followupDue, itemDomain, rehearsalForms, score, sessionItems } from "../../lib/claude/practice";
 import type { PracticeMode } from "../../lib/claude/practice";
 import { emptyProgress, progressKey, readProgress, updateProgress } from "../../lib/claude/progress";
 import { cityAssignmentKey, readCityAssignment } from "../../lib/claude/city-progress";
@@ -21,20 +21,40 @@ import type { PortfolioRecords } from "../../lib/claude/pathway";
 import { progressScope, subscribeToProgress } from "../../lib/progress-storage";
 import { useAccount } from "../account";
 import { ExternalLink, trackIcons } from "./chrome";
+import { CapstoneWorkspace } from "./capstone-workspace";
 import { DecemberWorkshop } from "./december-workshop";
+import { EntryBridge } from "./entry-bridge";
+import { GuideSkills } from "./guide-skills";
+import { ReadinessPanel } from "./readiness-panel";
 import { dateFormat, dueLabel, modeLabel, PracticeReview, PracticeSession } from "./session";
-import { rehearsalItems } from "../../lib/claude/assessment/forms";
-import { decemberBlueprint, decemberLabel, decemberVersion, rehearsalBlueprint } from "../../lib/claude/december-blueprints";
+import { rehearsalFormLabel } from "../../lib/claude/assessment/forms";
+import type { RehearsalForm } from "../../lib/claude/assessment/forms";
+import { decemberBlueprint, decemberVersion, examGuideLabel, rehearsalBlueprint } from "../../lib/claude/december-blueprints";
 import type { ExamVersion } from "../../lib/claude/december-blueprints";
 import { caseworkFor } from "../../lib/claude/cases";
+import { getCapstoneDefinition } from "../../lib/claude/capstones";
+import { objectiveCoverage } from "../../lib/claude/curriculum";
+import { bridges } from "../../lib/claude/curriculum/bridges";
+import { benchmarkEvidence, emptyReadiness, readReadiness, readinessKey, updateReadiness } from "../../lib/claude/readiness";
 
 type View = "overview" | "session" | "review";
+
+function focusDomain(id: string) {
+  const panel = document.getElementById(id) as HTMLDetailsElement | null;
+  if (!panel) return false;
+  panel.open = true;
+  panel.querySelector("summary")?.focus({ preventScroll: true });
+  panel.scrollIntoView({ block: "start" });
+  return true;
+}
 
 export function TrackWorkspace({ track }: { track: Track }) {
   const { ready, user } = useAccount();
   const [view, setView] = useState<View>("overview");
   const [version, setVersion] = useState<ExamVersion>("july-2026");
   const [progress, setProgress] = useState(emptyProgress);
+  const [readiness, setReadiness] = useState(emptyReadiness);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [now, setNow] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [sessionOnly, setSessionOnly] = useState(false);
@@ -48,6 +68,8 @@ export function TrackWorkspace({ track }: { track: Track }) {
   const domainFocus = useRef<string | null>(null);
   const latest = useRef(emptyProgress);
   const pending = useRef<Promise<boolean>>(Promise.resolve(true));
+  const latestReadiness = useRef(emptyReadiness);
+  const pendingReadiness = useRef<Promise<boolean>>(Promise.resolve(true));
   const place = places.find(({ id }) => id === track.place)!;
   const isDispatch = track.id === "architect-foundations";
   const assignment = isCityAssignment(track.id) ? assignments[track.id] : null;
@@ -59,13 +81,33 @@ export function TrackWorkspace({ track }: { track: Track }) {
   const starterComplete = portfolio.completed.some(({ id }) => id === starter.id);
   const starterCase = caseworkFor(starter.id);
   const december = decemberBlueprint(track);
+  const revised = version === decemberVersion;
   const selectedBlueprint = rehearsalBlueprint(track, version);
-  const firstRehearsal = progress.attempts.find((attempt) => attempt.mode === "assessment" &&
-    (attempt.version ?? "july-2026") === version);
-  const firstRehearsalItems = firstRehearsal ? sessionItems(track, firstRehearsal).filter((item) => !item.pilot) : [];
-  const previousRehearsalItems = new Set(progress.attempts.filter((item) => item.mode === "assessment").flatMap((item) => item.itemIds));
-  const previouslyRehearsed = rehearsalItems(track.id, version).filter(({ id }) => previousRehearsalItems.has(id)).length;
+  const forms = rehearsalForms(track.id, version, progress.attempts, [...cityExposure.keys(), ...(progress.seen ?? [])]);
+  const benchmark = benchmarkEvidence(track, version, readiness, progress.attempts, now);
+  const guided = new Set(readiness.guide);
+  const passedSkills = (results?: typeof benchmark.practical.capstone) => new Set(results?.results.filter(({ passed }) => passed).flatMap(({ objectives }) => objectives));
+  const caseSkills = passedSkills(benchmark.practical.capstone ?? benchmark.practical.firstCapstone);
+  const delayedSkills = passedSkills(benchmark.practical.transfer ?? benchmark.practical.firstTransfer);
+  const sampledSkills = (stage: "capstone" | "transfer") => new Set(getCapstoneDefinition(track.id, version, stage).criteria
+    .flatMap(({ objectives, revisedObjectives }) => revised ? revisedObjectives ?? objectives : objectives));
+  const caseSample = sampledSkills("capstone");
+  const delayedSample = sampledSkills("transfer");
+  const legacyCoverage = objectiveCoverage(track, "july-2026");
+  const cityGuide = isDispatch ? "November" : "July";
+  const domainProgress = objectiveCoverage(track, version).map(({ id, title, skills }) => ({
+    id, title, objectives: skills.length,
+    practiced: skills.filter((skill) => (revised ? guided : portfolio.applied).has(skill.id)).length,
+    checked: revised ? null : skills.filter((skill) => portfolio.demonstrated.has(skill.id)).length,
+    practical: skills.filter((skill) => caseSkills.has(skill.id)).length,
+    practicalTotal: skills.filter((skill) => caseSample.has(skill.id)).length,
+    delayed: skills.filter((skill) => delayedSkills.has(skill.id)).length,
+    delayedTotal: skills.filter((skill) => delayedSample.has(skill.id)).length,
+  }));
+  const objectiveTotal = domainProgress.reduce((sum, entry) => sum + entry.objectives, 0);
+  const objectivesPracticed = domainProgress.reduce((sum, entry) => sum + entry.practiced, 0);
   const due = followupDue(progress.attempts);
+  const transferDue = benchmark.practical.transferDue;
   const followup = progress.attempts.find(({ mode }) => mode === "followup");
   const selectedAttempt = progress.attempts.find(({ id }) => id === reviewId);
   const Icon = trackIcons[track.id];
@@ -79,6 +121,10 @@ export function TrackWorkspace({ track }: { track: Track }) {
       const value = readProgress(track) ?? emptyProgress;
       latest.current = value;
       setProgress(value);
+      const savedReadiness = readReadiness(track) ?? emptyReadiness;
+      latestReadiness.current = savedReadiness;
+      setReadiness(savedReadiness);
+      if (december && savedReadiness.version) setVersion(savedReadiness.version);
       setCityRecords(readPortfolio(user ? null : undefined));
       if (track.id === "architect-foundations") {
         const dispatch = readDispatch();
@@ -88,8 +134,8 @@ export function TrackWorkspace({ track }: { track: Track }) {
       }
     }
     restore();
-    if (december && (latest.current.draft?.version === decemberVersion || Date.now() >= Date.parse("2026-12-07T00:00:00-06:00"))) {
-      setVersion(decemberVersion);
+    if (!latestReadiness.current.version) {
+      setVersion(december && (latest.current.draft?.version === decemberVersion || Date.now() >= Date.parse("2026-12-07T00:00:00-06:00")) ? decemberVersion : "july-2026");
     }
     setLoaded(true);
     setNow(Date.now());
@@ -98,17 +144,11 @@ export function TrackWorkspace({ track }: { track: Track }) {
     }
     const linkedDomain = Number(new URLSearchParams(window.location.search).get("domain"));
     if (track.domains.some(({ id }) => id === linkedDomain)) {
-      requestAnimationFrame(() => {
-        const panel = document.getElementById(`july-domain-${linkedDomain}`) as HTMLDetailsElement | null;
-        if (!panel) return;
-        panel.open = true;
-        panel.querySelector("summary")?.focus();
-        panel.scrollIntoView({ block: "center" });
-      });
+      requestAnimationFrame(() => focusDomain(`july-domain-${linkedDomain}`));
     }
     const refresh = () => setNow(Date.now());
     const unsubscribe = subscribeToProgress((key, local) => {
-      if (!local && (key === progressKey(track) || key === dispatchProgressKey || key === cityAssignmentKey(track) || key?.startsWith(missionStoragePrefix) || key === "simza.ccar-f.task-2.2.v1" || key === null)) restore();
+      if (!local && (key === progressKey(track) || key === readinessKey(track) || key === dispatchProgressKey || key === cityAssignmentKey(track) || key?.startsWith(missionStoragePrefix) || key === "simza.ccar-f.task-2.2.v1" || key === null)) restore();
     });
     window.addEventListener("focus", refresh);
     return () => {
@@ -118,23 +158,19 @@ export function TrackWorkspace({ track }: { track: Track }) {
   }, [track, ready, user, december]);
 
   useEffect(() => {
-    if (due === null || due <= now) return;
-    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(due - Date.now() + 25, 2_147_483_647));
+    const next = Math.min(...[due, transferDue].filter((date): date is number => date !== null && date > now));
+    if (!Number.isFinite(next)) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(next - Date.now() + 25, 2_147_483_647));
     return () => window.clearTimeout(timer);
-  }, [due, now]);
+  }, [due, transferDue, now]);
 
   useEffect(() => {
     if (!focusHeading.current) return;
     focusHeading.current = false;
     if (view === "overview" && domainFocus.current !== null) {
-      const panel = document.getElementById(domainFocus.current) as HTMLDetailsElement | null;
+      const focused = focusDomain(domainFocus.current);
       domainFocus.current = null;
-      if (panel) {
-        panel.open = true;
-        panel.querySelector("summary")?.focus();
-        panel.scrollIntoView({ block: "center" });
-        return;
-      }
+      if (focused) return;
     }
     window.scrollTo(0, 0);
     const heading = document.querySelector<HTMLElement>(".academy-workspace h1");
@@ -169,12 +205,32 @@ export function TrackWorkspace({ track }: { track: Track }) {
     void save({ type: "present", id, itemId });
   }, [save]);
 
+  function saveReadiness(action: Parameters<typeof updateReadiness>[2]) {
+    const scope = progressScope();
+    const work = pendingReadiness.current.then(async () => {
+      if (scope !== progressScope()) return false;
+      const result = await updateReadiness(track, latestReadiness.current, action);
+      latestReadiness.current = result.progress;
+      setReadiness(result.progress);
+      setReadinessError(result.error ?? (result.saved ? null : "Browser storage is unavailable. This progress lasts until you leave the page."));
+      setNow(Date.now());
+      return result.error === null;
+    });
+    pendingReadiness.current = work;
+    return work;
+  }
+
+  function selectVersion(examVersion: ExamVersion) {
+    setVersion(examVersion);
+    void saveReadiness({ type: "version", version: examVersion });
+  }
+
   function showReview(id: string) {
     setReviewId(id);
     navigate("review");
   }
 
-  async function start(mode: PracticeMode, domain: number | null = null) {
+  async function start(mode: PracticeMode, domain: number | null = null, form?: RehearsalForm) {
     if (busy || !loaded) return;
     if (latest.current.draft) {
       setError("Resume or discard the saved session before starting another.");
@@ -183,7 +239,7 @@ export function TrackWorkspace({ track }: { track: Track }) {
       return;
     }
     setBusy(true);
-    const session = createSession(track, mode, domain, mode === "mixed" && timed, latest.current.attempts, Date.now(), [...cityExposure.keys(), ...(latest.current.seen ?? [])], version);
+    const session = createSession(track, mode, domain, mode === "mixed" && timed, latest.current.attempts, Date.now(), [...cityExposure.keys(), ...(latest.current.seen ?? [])], version, form);
     if (await save({ type: "start", draft: session })) {
       navigate("session");
     }
@@ -232,25 +288,53 @@ export function TrackWorkspace({ track }: { track: Track }) {
         </dl>
       </section>
       <div className="academy-blueprint-line">
-        <span>{version === decemberVersion ? decemberLabel : blueprintLabel}</span>
+        <span>{examGuideLabel(track, version)}</span>
         <ExternalLink href={selectedBlueprint.guide}>Official exam guide</ExternalLink>
       </div>
       {december && <fieldset className="academy-exam-version">
         <legend>When are you taking the exam?</legend>
-        <label><input type="radio" name="exam-version" checked={version === "july-2026"} onChange={() => setVersion("july-2026")} />Before December 7</label>
-        <label><input type="radio" name="exam-version" checked={version === decemberVersion} onChange={() => setVersion(decemberVersion)} />December 7 or later</label>
+        <label><input type="radio" name="exam-version" checked={version === "july-2026"} onChange={() => selectVersion("july-2026")} />Before December 7</label>
+        <label><input type="radio" name="exam-version" checked={version === decemberVersion} onChange={() => selectVersion(decemberVersion)} />December 7 or later</label>
       </fieldset>}
+      <nav className="academy-pathway-links" aria-label="Learning pathway">
+        <a href="#entry-bridge" onClick={() => { const entry = document.getElementById("entry-bridge") as HTMLDetailsElement | null; if (entry) entry.open = true; }}>Start here</a>
+        <Link href={cityAssignmentHref(track)}>City assignments</Link>
+        <a href={revised ? "#guide-skills" : "#domain-title"}>Practice by domain</a>
+        <a href="#track-practicals">Practical cases</a>
+        <a href="#rehearsal">Timed forms</a>
+      </nav>
+      <section className="academy-panel academy-assignment-card academy-first-assignment" aria-labelledby="track-assignment">
+        <div>
+          <p className="academy-kicker"><MapPin size={15} aria-hidden="true" /> {place.name}</p>
+          <h2 id="track-assignment">{track.assignment}</h2>
+          <p>{cityRecords[starter.id]?.casework && starterCase ? starterCase.retest.done : assignmentComplete && assignment ? assignment.impact : bridges[track.id].mission}</p>
+          {starterComplete && <p className="academy-positive"><Check size={16} aria-hidden="true" /> First assignment saved</p>}
+        </div>
+        <Link className="academy-button secondary" href={starterComplete ? cityAssignmentHref(track) : `${cityAssignmentHref(track)}&mission=${starter.id}`}>
+          {starterComplete ? "Continue in the city" : "Open your first assignment"} <ArrowRight size={16} aria-hidden="true" />
+        </Link>
+      </section>
+      {readinessError && <p className="academy-error" role="alert">{readinessError}</p>}
       <div className="academy-track-layout">
         <div className="academy-main-column">
+          {loaded && <EntryBridge key={user?.id ?? "guest"} track={track} saved={readiness.bridge} onSave={(choices) => saveReadiness({ type: "bridge", choices })} />}
           <section className="academy-panel academy-pathway-progress" aria-labelledby="overall-progress-heading">
             <h2 id="overall-progress-heading">Learning progress</h2>
             <dl>
-              <div><dt>Assignments saved</dt><dd>{portfolio.completed.length}/{portfolio.missions.length}</dd></div>
-              <div><dt>July guide objectives applied</dt><dd>{portfolio.applied.size}/{track.domains.reduce((count, { objectives }) => count + objectives.length, 0)}</dd></div>
-              <div><dt>July objectives correct on a first-seen check</dt><dd>{portfolio.demonstrated.size}</dd></div>
-              <div><dt>First timed rehearsal</dt><dd>{firstRehearsal ? `${score(firstRehearsalItems, firstRehearsal.answers)}/${firstRehearsalItems.length}` : "Available"}</dd></div>
+              <div><dt>City assignments saved</dt><dd>{portfolio.completed.length}/{portfolio.missions.length}</dd></div>
+              <div><dt>{revised ? "December guided objectives practiced" : `${cityGuide} guide objectives applied`}</dt><dd>{objectivesPracticed}/{objectiveTotal}</dd></div>
+              <div><dt>{cityGuide} objectives correct on a first-seen city check</dt><dd>{portfolio.demonstrated.size}</dd></div>
+              <div><dt>Practical cases passed for this guide</dt><dd>{Number(!!benchmark.practical.capstone) + Number(!!benchmark.practical.transfer)}/2</dd></div>
             </dl>
           </section>
+          <ReadinessPanel evidence={benchmark} domains={domainProgress} revised={revised} now={now}
+            onDomain={(id) => focusDomain(`${revised ? "december" : "july"}-domain-${id}`)} />
+          {revised && <>
+            <GuideSkills key={`${track.id}:${user?.id ?? "guest"}`} track={track} practiced={guided} onPractice={(objective) => saveReadiness({ type: "guide", objective })} />
+            <DecemberWorkshop track={track.id} completed={readiness.workshop} onComplete={() => void saveReadiness({ type: "workshop" })} />
+          </>}
+          {loaded && <CapstoneWorkspace key={`${version}:${user?.id ?? "guest"}`} track={track} version={version} attempts={readiness.capstones}
+            onSubmit={(attempt) => saveReadiness({ type: "submission", attempt })} />}
           <section className="academy-panel academy-start-panel" id="practice-controls" aria-labelledby="practice-title">
             <div className="academy-section-heading">
               <h2 id="practice-title">{progress.draft ? "Resume practice" : "Mixed practice"}</h2>
@@ -258,7 +342,7 @@ export function TrackWorkspace({ track }: { track: Track }) {
             </div>
             {progress.draft ? (
               <>
-                <p>{modeLabel(track, progress.draft)} · {progress.draft.itemIds.length} questions{progress.draft.mode === "assessment" && ` · Guide ${progress.draft.version === decemberVersion ? "v1.1" : "v1.0"}`}</p>
+                <p>{modeLabel(track, progress.draft)} · {progress.draft.itemIds.length} questions{progress.draft.mode === "assessment" && ` · ${examGuideLabel(track, progress.draft.version)}`}</p>
                 {discard
                   ? <div className="academy-actions">
                     <button className="academy-button secondary" disabled={busy} onClick={async () => {
@@ -276,7 +360,7 @@ export function TrackWorkspace({ track }: { track: Track }) {
               </>
             ) : (
               <>
-                <p>{practiceCount} questions across {track.domains.length} {version === decemberVersion ? "July guide " : ""}domains. Review your answers and sources after submitting.</p>
+                <p>{practiceCount} questions across {track.domains.length} {revised ? "July guide " : ""}domains. Review your answers and sources after submitting.</p>
                 <div className="academy-actions">
                   <button id="practice-start" className="academy-button primary" disabled={busy || !loaded} onClick={() => void start("mixed")}>Start mixed practice <ArrowRight size={16} aria-hidden="true" /></button>
                   <label className="academy-timed"><input type="checkbox" checked={timed} onChange={(event) => setTimed(event.target.checked)} /> Timed · {pacing} min</label>
@@ -286,42 +370,26 @@ export function TrackWorkspace({ track }: { track: Track }) {
             {error && <p className="academy-error" role="alert">{error}</p>}
             {sessionOnly && <p className="academy-error" role="status">Browser storage is unavailable. This progress lasts until you leave the page.</p>}
           </section>
-          {rehearsalItems(track.id, version).length > 0 && <section className="academy-panel academy-rehearsal">
-            <div>
-              <h2>Timed exam rehearsal</h2>
-              <p>{rehearsalItems(track.id, version).length} questions · {examMinutes} minutes · Results by exam domain</p>
-              {version === decemberVersion && <p>60 scored questions and 10 unscored. All questions receive feedback.</p>}
-              {previouslyRehearsed > 0 && !firstRehearsal && <p>Your earlier rehearsal used a form with {previouslyRehearsed} of these questions.</p>}
-            </div>
-            <button type="button" className="academy-button primary" disabled={busy || !loaded || !!progress.draft}
-              onClick={() => void start("assessment")}>{firstRehearsal ? "Repeat rehearsal" : "Start rehearsal"}
-              <ArrowRight size={16} aria-hidden="true" />
-            </button>
-          </section>}
-          {version === decemberVersion && <DecemberWorkshop track={track.id} />}
-          {version === decemberVersion && <section className="academy-panel academy-updated-domains">
-            <h2>December exam domains</h2>
-            {selectedBlueprint.domains.map(({ id, title, weight, objectives }) => {
-              const scored = firstRehearsalItems.filter((item) => itemDomain(item) === id);
-              return <details className="academy-domain" id={`december-domain-${id}`} key={id}>
-                <summary><span><strong>{title}</strong>
-                  {firstRehearsal && <small>{score(scored, firstRehearsal.answers)}/{scored.length} correct in first rehearsal</small>}</span>
-                  <span className="academy-weight">{weight}%</span></summary>
-                <ul className="academy-objectives">{objectives.map((objective, index) => {
-                  const items = scored.filter((item) => item.objective === `${id}.${index + 1}`);
-                  return <li key={objective}><span>{objective}</span>
-                    {firstRehearsal && <span>{score(items, firstRehearsal.answers)}/{items.length} correct</span>}</li>;
-                })}</ul>
-              </details>;
-            })}
-          </section>}
+          <section className="academy-panel academy-rehearsal-forms" id="rehearsal" aria-labelledby="rehearsal-title">
+            <h2 id="rehearsal-title">Timed exam rehearsals</h2>
+            <p>Each form has {examMinutes} minutes and results by exam domain. Save a fresh form for after you review weaker domains.</p>
+            {revised && <p>Each form has 60 scored and 10 unscored questions. See feedback for every question after submitting.</p>}
+            {forms.map(({ form, items, exposed, completed }) => items.length > 0 && <div key={form} className="academy-rehearsal">
+              <div>
+                <h3>{rehearsalFormLabel(form)}</h3>
+                <p>{items.length} questions · {exposed ? `${exposed} previously seen` : "Fresh questions"}{completed && " · Completed"}</p>
+              </div>
+              <button type="button" className="academy-button primary" disabled={busy || !loaded || !!progress.draft}
+                onClick={() => void start("assessment", null, form)}>{completed ? "Repeat" : "Start"} {rehearsalFormLabel(form).toLowerCase()} <ArrowRight size={16} aria-hidden="true" /></button>
+            </div>)}
+          </section>
           <section className="academy-domain-section" aria-labelledby="domain-title">
             <div className="academy-section-heading">
-              <h2 id="domain-title">{version === decemberVersion ? "Practice by July domain" : "Practice by domain"}</h2>
+              <h2 id="domain-title">{revised ? "Practice by July domain" : "Practice by domain"}</h2>
               <span>{evidence.reviewed.size} / {bank.practice.length} questions practiced</span>
             </div>
             <div className="academy-domain-list">
-              {track.domains.map((domain) => {
+              {legacyCoverage.map((domain) => {
                 const items = bank.practice.filter((entry) => itemDomain(entry) === domain.id);
                 const available = new Set(items.map(({ objective }) => objective));
                 const practiced = evidence.firstObjectives.get(domain.id) ?? new Set();
@@ -333,10 +401,14 @@ export function TrackWorkspace({ track }: { track: Track }) {
                       <p>{domain.objectives.filter((_, i) => portfolio.applied.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} applied in city work
                         {" · "}{domain.objectives.filter((_, i) => portfolio.demonstrated.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} correct on a first-seen check</p>
                       <ul className="academy-objectives">
-                        {domain.objectives.map((name, index) => {
-                          const code = `${domain.id}.${index + 1}` as const;
-                          return <li key={code}><span>{isDispatch ? `${code} · ` : ""}{name}</span><span>{portfolio.demonstrated.has(code) ? "Check correct" : practiced.has(code) ? "Practiced" : portfolio.applied.has(code) ? "Applied in city" : available.has(code) ? "Available" : "In exam guide"}</span></li>;
-                        })}
+                        {domain.skills.map(({ id: code, title: name, missions }) => (
+                          <li key={code} className="academy-mapped-skill">
+                            <div><span>{code} · {name}</span>
+                              <div className="academy-mission-links">{missions.map((mission) => <Link key={mission.id} href={`${cityAssignmentHref(track)}&mission=${mission.id}`}>{mission.title}</Link>)}</div>
+                            </div>
+                            <span>{portfolio.demonstrated.has(code) ? "Check correct" : practiced.has(code) ? "Practiced" : portfolio.applied.has(code) ? "Applied in city" : available.has(code) ? "Available" : "In exam guide"}</span>
+                          </li>
+                        ))}
                       </ul>
                       <button className="academy-button secondary" disabled={busy || !loaded} onClick={() => void start("domain", domain.id)}>Practice this domain <ArrowRight size={16} aria-hidden="true" /></button>
                     </div>
@@ -346,18 +418,9 @@ export function TrackWorkspace({ track }: { track: Track }) {
             </div>
           </section>
         </div>
-        <aside className="academy-sidebar" aria-label="Assignment, follow-up and official resources">
-          <section className="academy-panel academy-assignment-card">
-            <p className="academy-kicker"><MapPin size={15} aria-hidden="true" /> {place.name}</p>
-            <h2>{track.assignment}</h2>
-            <p>{cityRecords[starter.id]?.casework && starterCase ? starterCase.retest.done : assignmentComplete && assignment ? assignment.impact : place.example}</p>
-            {starterComplete && <p className="academy-positive"><Check size={16} aria-hidden="true" /> Assignment complete</p>}
-            <Link className="academy-button secondary" href={cityAssignmentHref(track)}>
-              Explore this pathway in the city <ArrowRight size={16} aria-hidden="true" />
-            </Link>
-          </section>
+        <aside className="academy-sidebar" aria-label="Follow-up and official resources">
           <section className="academy-panel">
-            <div className="academy-section-heading"><h2>Seven-day follow-up</h2><RotateCcw size={19} strokeWidth={1.7} aria-hidden="true" /></div>
+            <div className="academy-section-heading"><h2>{revised ? "July practice follow-up" : "Seven-day follow-up"}</h2><RotateCcw size={19} strokeWidth={1.7} aria-hidden="true" /></div>
             <p>{followup ? "Your follow-up results are saved." : due === null ? "Submit mixed practice to unlock a new set of scenarios seven days later." : due > now ? `Available ${dueLabel(due)}.` : `${bank.followup.length} new scenarios are ready.`}</p>
             {followup
               ? <button className="academy-button secondary" onClick={() => showReview(followup.id)}>Review follow-up <ArrowRight size={16} aria-hidden="true" /></button>
@@ -370,7 +433,7 @@ export function TrackWorkspace({ track }: { track: Track }) {
                 {[...progress.attempts].reverse().map((attempt) => {
                   const items = sessionItems(track, attempt).filter((item) => !item.pilot);
                   return <li key={attempt.id}><button onClick={() => showReview(attempt.id)}>
-                    <span><strong>{modeLabel(track, attempt)}{attempt.mode === "assessment" && ` · v${attempt.version === decemberVersion ? "1.1" : "1.0"}`}</strong><small>{dateFormat.format(attempt.submittedAt)}</small></span>
+                    <span><strong>{modeLabel(track, attempt)}{attempt.mode === "assessment" && ` · ${examGuideLabel(track, attempt.version)}`}</strong><small>{dateFormat.format(attempt.submittedAt)}</small></span>
                     <span>{score(items, attempt.answers)}/{items.length} <ArrowRight size={15} aria-hidden="true" /></span>
                   </button></li>;
                 })}

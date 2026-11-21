@@ -115,15 +115,15 @@ export function WorldScene<T extends string>({
       world.current?.dispose();
       world.current = null;
     };
-  }, [kind, missionRoom?.kind, missionRoom?.room, missionRoom?.workId, missionRoom?.surface]);
+  }, [kind, missionRoom?.kind, missionRoom?.room, missionRoom?.missionId, missionRoom?.workId, missionRoom?.surface]);
 
   return (
-    <section className="world-scene" aria-label={description} data-scene={kind} data-world-state={state}>
+    <section className="world-scene" aria-label={description} data-scene={kind} data-world-state={state} data-station-open={kind === "mission" && panelOpen || undefined}>
       <div className="world-renderer" ref={host} />
       {state !== "ready" && (
         <p className="world-message" role="status">
           {state === "loading" ? kind === "mission" ? `Opening ${missionRoom?.room ?? "the assignment"}…` : "Opening the neighborhood…"
-            : kind === "mission" ? "The interior view is unavailable. Your assignment is still available below."
+            : kind === "mission" ? "Use the station buttons below to open this assignment."
               : "The 3D view is unavailable. Use Places or Stations to continue."}
         </p>
       )}

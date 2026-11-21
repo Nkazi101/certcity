@@ -1,8 +1,9 @@
 import { progressScope, readProgressItem, writeProgressItem } from "../progress-storage";
-import { blueprint } from "./blueprints";
+import { blueprint, examMinutes } from "./blueprints";
 import type { Track } from "./blueprints";
 import { decemberBlueprint, decemberVersion } from "./december-blueprints";
-import { followupDue, itemDomain, responseComplete, sessionItems } from "./practice";
+import { followupDue, itemDomain, rehearsalPriorExposure, responseComplete, sessionItems } from "./practice";
+import { rehearsalFormIds, rehearsalItems } from "./assessment/forms";
 import type { Attempt, Session } from "./practice";
 
 export type Progress = {
@@ -21,24 +22,33 @@ export function progressKey(track: Track) {
 function parseSession(track: Track, value: unknown): Session | null {
   if (!value || typeof value !== "object") return null;
   const saved = value as Partial<Session>;
-  const { id, mode, version, domain, itemIds, answers, startedAt, deadline } = saved;
+  const { id, mode, version, form, priorExposure, domain, itemIds, answers, startedAt, deadline } = saved;
   if (typeof id !== "string" || !["mixed", "domain", "followup", "assessment"].includes(mode ?? "") ||
       (version !== undefined && (mode !== "assessment" ||
         version !== "july-2026" && (version !== decemberVersion || !decemberBlueprint(track)))) ||
+      (form !== undefined && (mode !== "assessment" || !rehearsalFormIds.includes(form))) ||
       !Array.isArray(itemIds) || !itemIds.length || new Set(itemIds).size !== itemIds.length ||
+      (priorExposure !== undefined && (mode !== "assessment" || !Array.isArray(priorExposure) ||
+        new Set(priorExposure).size !== priorExposure.length || priorExposure.some((id) => !itemIds.includes(id)))) ||
       !startedAt || !Number.isSafeInteger(startedAt) || startedAt < 0 || startedAt > 8.64e15 ||
       (deadline !== null && (!deadline || !Number.isSafeInteger(deadline) || deadline <= startedAt || deadline > 8.64e15)) ||
       !answers || typeof answers !== "object" ||
       (mode === "domain" ? !track.domains.some((entry) => entry.id === domain) : domain !== null)) return null;
-  const items = sessionItems(track, { mode: mode!, version, itemIds });
+  const items = sessionItems(track, { mode: mode!, version, form, itemIds });
   if (items.length !== itemIds.length || (mode === "domain" && items.some((entry) => itemDomain(entry) !== domain))) return null;
+  if (form) {
+    const expected = rehearsalItems(track.id, version, form);
+    if (deadline !== startedAt + examMinutes * 60_000 || expected.length !== itemIds.length ||
+        expected.some((entry, index) => entry.id !== itemIds[index])) return null;
+  }
   const cleanAnswers = Object.fromEntries(items.flatMap(({ id, options, correct }) => {
     const picks = answers[id];
     return Array.isArray(picks) && picks.length <= correct.length && new Set(picks).size === picks.length &&
       picks.every((value) => options.some(([key]) => key === value)) ? [[id, picks]] : [];
   }));
   const index = Number.isInteger(saved.index) ? Math.max(0, Math.min(items.length - 1, saved.index!)) : 0;
-  return { id, mode: mode!, ...(version && { version }), domain: domain!, itemIds, answers: cleanAnswers, index, startedAt, deadline };
+  return { id, mode: mode!, ...(version && { version }), ...(form && { form }), ...(priorExposure && { priorExposure }),
+    domain: domain!, itemIds, answers: cleanAnswers, index, startedAt, deadline };
 }
 
 export function readProgress(track: Track): Progress | null {
@@ -85,10 +95,18 @@ export async function updateProgress(track: Track, fallback: Progress, action: A
     } else if (action.type === "start") {
       const now = Date.now();
       const due = followupDue(current.attempts);
+      const draft = parseSession(track, action.draft);
       if (current.draft) error = "Resume or discard the saved session before starting another.";
-      else if (action.draft.mode === "followup" && (due === null || due > now || current.attempts.some(({ mode }) => mode === "followup"))) {
+      else if (!draft) error = "This session could not be started.";
+      else if (draft.mode === "followup" && (due === null || due > now || current.attempts.some(({ mode }) => mode === "followup"))) {
         error = "This follow-up is unavailable.";
-      } else next = { ...current, draft: action.draft };
+      } else if (draft.mode === "assessment") {
+        // A concurrent tab can have shown a question after the learner chose a form.
+        const exposed = [...(current.seen ?? []), ...(draft.priorExposure ?? [])];
+        const priorExposure = rehearsalPriorExposure(draft.itemIds, current.attempts, exposed);
+        next = { ...current, draft: { ...draft, priorExposure },
+          seen: [...new Set([...(current.seen ?? []), draft.itemIds[draft.index]])] };
+      } else next = { ...current, draft };
     } else if (current.draft?.id !== action.id) {
       if (!current.attempts.some(({ id }) => id === action.id)) error = "This session was closed in another tab.";
     } else {
@@ -108,7 +126,8 @@ export async function updateProgress(track: Track, fallback: Progress, action: A
           next = { ...current, draft: null, attempts: [...current.attempts, { ...attempt, submittedAt: now }] };
         }
       } else if (!expired && action.type === "move" && items[action.index]) {
-        next = { ...current, draft: { ...draft, index: action.index } };
+        next = { ...current, draft: { ...draft, index: action.index },
+          ...(draft.mode === "assessment" && { seen: [...new Set([...(current.seen ?? []), items[action.index].id])] }) };
       } else if (!expired && action.type === "choose") {
         const question = items.find(({ id }) => id === action.itemId);
         if (question?.options.some(([value]) => value === action.value)) {

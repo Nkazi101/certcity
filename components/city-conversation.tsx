@@ -2,7 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 import { ArrowRight, MessageCircle, X } from "lucide-react";
 
-export function ConversationFrame({ dialog, title, name, role, portrait, step, onClose, children, moduleProgress, variant = "conversation" }: {
+export function ConversationFrame({ dialog, title, name, role, portrait, step, onClose, children, moduleProgress, variant = "conversation", room }: {
   dialog: RefObject<HTMLDialogElement | null>;
   title: string;
   name: string;
@@ -13,6 +13,7 @@ export function ConversationFrame({ dialog, title, name, role, portrait, step, o
   children: ReactNode;
   moduleProgress?: ReactNode;
   variant?: "conversation" | "workbench";
+  room?: string;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
@@ -34,11 +35,12 @@ export function ConversationFrame({ dialog, title, name, role, portrait, step, o
   }, [dialog, step]);
 
   return (
-    <dialog className={`conversation-dialog ${variant === "workbench" ? "conversation-dialog--workbench" : ""}`} ref={dialog} aria-labelledby={headingId} onClose={onClose}>
+    <dialog className={`conversation-dialog ${variant === "workbench" ? "conversation-dialog--workbench" : ""}${room ? " conversation-dialog--station" : ""}`} ref={dialog} aria-labelledby={headingId} onClose={onClose}>
       <header className="conversation-top">
-        <div><MessageCircle size={16} aria-hidden="true" /><h2 id={headingId} tabIndex={-1} ref={heading}>{title}</h2></div>
+        <div><MessageCircle size={16} aria-hidden="true" /><div><h2 id={headingId} tabIndex={-1} ref={heading}>{title}</h2>{room && <small>{room}</small>}</div></div>
         {moduleProgress}
-        <button className="icon-button" type="button" aria-label="Close conversation" onClick={() => dialog.current?.close()}><X size={19} aria-hidden="true" /></button>
+        <button className="icon-button" type="button" aria-label={room ? "Return to the room" : "Close conversation"} title={room ? "Return to the room" : undefined}
+          onClick={() => dialog.current?.close()}><X size={19} aria-hidden="true" /></button>
       </header>
       {variant === "conversation" && <div className="conversation-character">
         {portrait ? <img className="conversation-portrait" src={`/models/portraits/${portrait}.webp`} alt="" width={360} height={416} /> :

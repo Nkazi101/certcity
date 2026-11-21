@@ -34,7 +34,7 @@ import { MissionWorkbench } from "./academy/mission-workbench";
 import { BuildingAssignmentDialog } from "./academy/building-assignment";
 import type { BuildingStation } from "./academy/building-assignment";
 import { lensForMission } from "../lib/claude/assignment-lens";
-import { assignmentOutcome, assignmentStations, assignmentWorkStatus, hasAssignmentWork } from "../lib/claude/assignment-work";
+import { assignmentOutcome, assignmentStations, hasAssignmentWork } from "../lib/claude/assignment-work";
 import { missingExpertise, missionCompleted, missionPreparationSteps, missionsFor, readPortfolio, recordMissionLens, unmetMissions } from "../lib/claude/pathway";
 import type { PortfolioRecords } from "../lib/claude/pathway";
 import { replayMission } from "../lib/claude/missions";
@@ -43,7 +43,7 @@ import { missionExperiences } from "../lib/claude/mission-experiences";
 import { citySigns } from "../lib/city-signs";
 import { caseworkFor } from "../lib/claude/cases";
 import { workLayout } from "../lib/claude/cases/layouts";
-import { replayCasework } from "../lib/claude/casework";
+import { roomCaseOutcome, roomFirstAction } from "../lib/claude/cases/presentation";
 
 type View = "city" | "depot" | "mission";
 
@@ -55,6 +55,25 @@ const cityMarkers = places.map((place) => ({
 const libraryTrack = tracks.find(({ id }) => id === "architect-foundations")!;
 const referenceDesk = missionsFor(libraryTrack.id).find(({ id }) => id === "library-search")!;
 const nolanMarker = { id: "olive-library", label: "Talk to Nolan", name: "Nolan" } as const;
+
+function canEnterMission(mission: Mission, records: PortfolioRecords, legacy: ReadonlySet<string>) {
+  return missionCompleted(mission, records, legacy) ||
+    (!unmetMissions(mission, records, legacy).length && !missingExpertise(mission, records).length);
+}
+
+function replaceMissionLocation(mission?: Mission) {
+  const url = new URL(window.location.href);
+  if (mission) {
+    url.searchParams.set("pathway", mission.track);
+    url.searchParams.set("mission", mission.id);
+  } else {
+    if (!url.searchParams.has("mission")) return;
+    url.searchParams.delete("mission");
+    url.searchParams.delete("pathway");
+  }
+  url.searchParams.delete("assignment");
+  window.history.replaceState(window.history.state, "", url);
+}
 
 function CityInspector({ selected, district, onSelect, onMission, onTalk, missions, legacy, records }: {
   selected: PlaceId | null;
@@ -233,6 +252,7 @@ export function CertCity() {
   const [activeMission, setActiveMission] = useState<Mission | null>(null);
   const [records, setRecords] = useState<PortfolioRecords>({});
   const [journalProgress, setJournalProgress] = useState(false);
+  const [requestedMission, setRequestedMission] = useState<string | null>(null);
   const [openPicker, setOpenPicker] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [placeVisit, setPlaceVisit] = useState<PlaceId | null>(null);
@@ -247,6 +267,8 @@ export function CertCity() {
   const missionDialog = useRef<HTMLDialogElement>(null);
   const certificationMenu = useRef<HTMLDialogElement>(null);
   const buildingDialog = useRef<HTMLDialogElement>(null);
+  const stationOpener = useRef<HTMLButtonElement | null>(null);
+  const restoreStationFocus = useRef(false);
   const savedBuildingOutcome = useRef(false);
   const openPriorReplay = useRef(false);
   const savedLegacyOutcome = useRef(false);
@@ -273,7 +295,7 @@ export function CertCity() {
   const workId = activeMission?.kind === "workbench" && hasAssignmentWork(activeMission.id) ? activeMission.id : undefined;
   const exercise = interiorMission ? caseworkFor(interiorMission.id) : undefined;
   const caseRecord = interiorMission ? records[interiorMission.id] : undefined;
-  const localOutcome = exercise && caseRecord?.casework ? replayCasework(exercise, caseRecord.casework, true).checks[0].effect
+  const localOutcome = interiorMission && exercise && caseRecord?.casework ? roomCaseOutcome(interiorMission.id, exercise, caseRecord.casework)
     : workId && records[workId]?.work ? assignmentOutcome(records[workId].work) : null;
   const workLabel = exercise?.station ?? (workId ? assignmentStations[workId] : "Work area");
   const buildingMarkers = interiorMission && interior ? [
@@ -315,8 +337,8 @@ export function CertCity() {
       const exercise = caseworkFor(mission.id);
       const record = records[mission.id];
       if (exercise && record?.casework) {
-        const { checks } = replayCasework(exercise, record.casework, true);
-        return [{ place: places.find(({ id }) => id === mission.place)!.name, title: mission.title, outcome: checks[0].effect }];
+        return [{ place: places.find(({ id }) => id === mission.place)!.name, title: mission.title,
+          outcome: roomCaseOutcome(mission.id, exercise, record.casework) }];
       }
       if (mission.kind !== "workbench") return [];
       const choices = record.choices!;
@@ -393,6 +415,23 @@ export function CertCity() {
     }
     setSelectedCertification(track);
     if (assignmentTrack || pathwayTrack) saveActiveAssignment(track);
+    if (pathwayTrack && url.searchParams.has("mission")) {
+      const mission = missionsFor(track.id).find(({ id }) => id === url.searchParams.get("mission"));
+      const restored = readPortfolio(committedDispatchCheck);
+      const saved = readDispatch();
+      const legacy = new Set([
+        ...(saved && meetsDispatchGoal(runShift(saved.contract, saved.routes)) ? ["dispatch-lookup"] : []),
+        ...(isCityAssignment(track.id) && readCityAssignment(track)
+          ? missionsFor(track.id).filter(({ kind }) => kind === "original").map(({ id }) => id) : []),
+      ]);
+      setDistrict(places.find(({ id }) => id === track.place)!.district);
+      if (mission && canEnterMission(mission, restored, legacy)) enterMission(mission, track);
+      else {
+        replaceMissionLocation();
+        if (mission) setRequestedMission(mission.id);
+      }
+      return;
+    }
     if (!assignmentTrack) {
       if (pathwayTrack) {
         setDistrict(places.find(({ id }) => id === track.place)!.district);
@@ -401,19 +440,10 @@ export function CertCity() {
       }
       return;
     }
-    if (track.place === "dispatch") {
-      setDistrict("maplewood");
-      setView("depot");
-      setInspecting(true);
-      setDispatchVisit(true);
-    } else {
-      const place = places.find(({ id }) => id === track.place)!;
-      setDistrict(place.district);
-      setSelectedPlace(place.id);
-      setInspecting(false);
-      setCityAssignment(track);
-      setView("mission");
-      setBuildingStation("stakeholder-0");
+    const starter = missionsFor(track.id).find(({ kind }) => kind === "original" || kind === "dispatch");
+    if (starter) {
+      enterMission(starter, track);
+      return;
     }
     url.searchParams.delete("assignment");
     window.history.replaceState(window.history.state, "", url);
@@ -425,6 +455,12 @@ export function CertCity() {
       setOpenPicker(false);
     }
   }, [openPicker]);
+
+  useEffect(() => {
+    if (view !== "mission" || buildingStation || !restoreStationFocus.current) return;
+    restoreStationFocus.current = false;
+    stationOpener.current?.focus({ preventScroll: true });
+  }, [view, buildingStation]);
 
   useEffect(() => {
     if (!playing) return;
@@ -439,7 +475,10 @@ export function CertCity() {
   function goTo(next: View) {
     if (view === next) return;
     setView(next);
-    if (next === "city") setSelectedPlace(null);
+    if (next === "city") {
+      setSelectedPlace(null);
+      replaceMissionLocation();
+    }
     setDistrictMenu(false);
     setInspecting(next === "depot");
     requestAnimationFrame(() => heading.current?.focus());
@@ -477,17 +516,24 @@ export function CertCity() {
       return;
     }
     setJournalProgress(progress);
+    setRequestedMission(null);
     journal.current?.showModal();
   }
 
   function openMission(mission: Mission, track = selectedCertification, fromSteps = false, study?: "check" | "followup") {
-    if (!track || mission.track !== track.id || (!missionCompleted(mission, records, legacy) && (unmetMissions(mission, records, legacy).length || missingExpertise(mission, records).length))) return;
+    if (!track || mission.track !== track.id || !canEnterMission(mission, records, legacy)) return;
     if (track !== selectedCertification) {
       setSelectedCertification(track);
       saveActiveAssignment(track);
     }
+    setRequestedMission(null);
     journal.current?.close();
     fromLibrarySteps.current = fromSteps;
+    enterMission(mission, track, study);
+  }
+
+  function enterMission(mission: Mission, track: Track, study?: "check" | "followup") {
+    replaceMissionLocation(mission);
     if (mission.kind === "dispatch") {
       enterDepot();
       setDispatchVisit(!study);
@@ -503,12 +549,13 @@ export function CertCity() {
     setCityAssignment(mission.kind === "original" ? track : null);
     const roomHasStations = hasAssignmentWork(mission.id) || !!caseworkFor(mission.id);
     setTaskConversationOpen(!study && !roomHasStations);
-    setBuildingStation(!study && roomHasStations ? "stakeholder-0" : null);
+    setBuildingStation(null);
     goTo("mission");
     if (study) openCertification(study === "check" ? "mission-check" : "mission-followup");
   }
 
   function selectBuildingStation(station: BuildingStation | null) {
+    if (station && !buildingStation && document.activeElement instanceof HTMLButtonElement) stationOpener.current = document.activeElement;
     setBuildingStation(station);
     setTaskConversationOpen(station === "work" && !workId && !exercise);
   }
@@ -772,8 +819,9 @@ export function CertCity() {
             <WorldScene
               key={`mission-${interiorMission?.id ?? "unknown"}`}
               kind="mission"
-              missionRoom={interior ? { ...interior, workId, surface: exercise && interiorMission ? workLayout(interiorMission.id).kind : undefined } : undefined}
+              missionRoom={interior ? { ...interior, missionId: interiorMission?.id, workId, surface: exercise && interiorMission ? workLayout(interiorMission.id).kind : undefined } : undefined}
               assignmentComplete={missionComplete}
+              panelOpen={buildingStation === "work" || buildingStation === "evidence"}
               description={`${interior?.room ?? "Assignment room"} interior for ${interiorMission?.title ?? "the assignment"}.`}
               markers={buildingMarkers}
               selected={buildingStation}
@@ -783,21 +831,28 @@ export function CertCity() {
           )}
 
           <div className="city-status-hud">
-            <CityImpact savedShift={savedResult} savedAssignments={savedCityOutcomes} localOutcome={view === "mission" ? localOutcome : null} dialog={impactDialog} />
+            <CityImpact savedShift={savedResult} savedAssignments={savedCityOutcomes} inRoom={view === "mission"} dialog={impactDialog} />
             {moduleProgress}
             {view === "city" && loaded && selectedCertification && <button className="button button-outline pathway-progress-button" type="button" onClick={() => openJournal(true)}>
               <GraduationCap size={17} aria-hidden="true" /> Pathway progress
             </button>}
           </div>
 
-          {view === "mission" && interior && <aside className="building-work-dock" aria-label="Inside the building">
-            <header><strong>{interior.room}</strong><span>{workId ? assignmentWorkStatus(workId, records[workId]?.work) :
-              missionComplete ? "Outcome saved" : "Assignment open"}</span></header>
-            <div>{buildingMarkers.map(({ id, name, icon: Icon }) =>
-              <button key={id} type="button" className={`button ${id === "work" ? "button-primary" : "button-outline"}`}
-                aria-haspopup="dialog" onClick={() => selectBuildingStation(id)}>
-                <Icon size={16} aria-hidden="true" />{name}
-              </button>)}</div>
+          {view === "mission" && interior && interiorMission && <aside className="building-work-dock" aria-label="Inside the building">
+            <div className="building-arrival">
+              <header><h2>{interior.room}</h2>{missionComplete && <span>Outcome saved</span>}</header>
+              <p>{interior.arrival}</p>
+              <p className="building-first-action" data-saved={!!localOutcome || undefined}>{localOutcome ?? roomFirstAction(interiorMission.id, interior.interviews[0].opening)}</p>
+            </div>
+            <div className="building-station-controls">
+              <button type="button" className="button button-primary" aria-haspopup="dialog" onClick={() => selectBuildingStation("work")}>
+                <Wrench size={16} aria-hidden="true" />{workLabel}<ArrowRight size={16} aria-hidden="true" />
+              </button>
+              <div>{buildingMarkers.filter(({ id }) => id !== "work").map(({ id, name, icon: Icon }) =>
+                <button key={id} type="button" className="button button-outline" aria-haspopup="dialog" onClick={() => selectBuildingStation(id)}>
+                  <Icon size={16} aria-hidden="true" />{name}
+                </button>)}</div>
+            </div>
           </aside>}
 
           {loaded && !inspecting && view !== "mission" && (
@@ -862,7 +917,7 @@ export function CertCity() {
 
       <CityCertificationDialog dialog={certificationMenu} selected={selectedCertification} onSelect={chooseTrack} />
       {selectedCertification && <MissionJournal dialog={journal} track={selectedCertification} records={records} legacy={legacy}
-        progress={journalProgress} onMission={openMission} onStudy={(mission, page) => openMission(mission, selectedCertification, false, page)}
+        progress={journalProgress} requestedMission={requestedMission} onMission={openMission} onStudy={(mission, page) => openMission(mission, selectedCertification, false, page)}
         dispatchDueAt={certification.progress.followup ? null : certification.dueAt ?? (certification.progress.first ? followupAt(certification.progress.first) : null)}
         onChangeTrack={() => {
           journal.current?.close();
@@ -878,6 +933,7 @@ export function CertCity() {
               setTaskConversationOpen(true);
               return;
             }
+            restoreStationFocus.current = !savedBuildingOutcome.current;
             setBuildingStation(null);
             if (savedBuildingOutcome.current) {
               savedBuildingOutcome.current = false;

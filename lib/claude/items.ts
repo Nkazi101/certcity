@@ -38,6 +38,9 @@ export const sources = {
   plugins: ["Claude Code · Plugins", "https://code.claude.com/docs/en/plugins"],
   files: ["Claude Platform · Files API", "https://platform.claude.com/docs/en/build-with-claude/files"],
   claudeMemory: ["Claude Help · Search and memory", "https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context"],
+  claudeResearch: ["Claude Help · Using Research", "https://support.claude.com/en/articles/11088861-use-research-on-claude"],
+  claudeSkills: ["Claude Help · Skills, connectors and plugins", "https://support.claude.com/en/articles/14328846-browse-skills-connectors-and-plugins-in-one-directory"],
+  deployment: ["Claude Platform · API and deployment options", "https://platform.claude.com/docs/en/api/overview"],
 } as const;
 
 type Source = keyof typeof sources;

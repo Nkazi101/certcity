@@ -1,5 +1,5 @@
-import { ArrowRight, Check, CircleAlert, ClipboardList, FileText, Gauge, Play, Terminal, Workflow } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { Check, CircleAlert, ClipboardList, FileText, Gauge, Play, Terminal, Workflow } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { CaseDraft, CaseValue, Casework } from "../../lib/claude/casework";
 import { caseCapacity, caseworkPassed, replayCasework, startingCase } from "../../lib/claude/casework";
@@ -52,7 +52,6 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
   legacyReplay?: ReactNode;
 }) {
   const [draft, setDraft] = useState<CaseDraft>(() => record?.caseDraft ?? record?.casework ?? startingCase(exercise));
-  const [references, setReferences] = useState<string[]>([]);
   const [tested, setTested] = useState<CaseDraft | null>(() => !record?.caseDraft && record?.casework ? draft : null);
   const [testedAgain, setTestedAgain] = useState<CaseDraft | null>(() => !record?.caseDraft && record?.casework ? draft : null);
   const [saved, setSaved] = useState(() => !record?.caseDraft && !!record?.casework);
@@ -60,6 +59,8 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
   const [error, setError] = useState("");
   const pending = useRef<Promise<unknown>>(Promise.resolve());
   const output = useRef<HTMLHeadingElement>(null);
+  const workbench = useRef<HTMLElement>(null);
+  const focusAfterRun = useRef(false);
   const id = useId();
   const layout = workLayout(mission.id);
   const { Icon, inputs, edit, run } = appearance[exercise.view];
@@ -68,6 +69,18 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
   const result = tested && replayCasework(exercise, tested);
   const retest = testedAgain && replayCasework(exercise, testedAgain, true);
   const sampleCurrent = tested === draft;
+
+  function focusResult() {
+    const response = workbench.current?.querySelector<HTMLElement>('.case-object-result[data-run="sample"][data-passed="false"]') ??
+      workbench.current?.querySelector<HTMLElement>('.case-object-result[data-run="sample"]');
+    (response ?? output.current)?.focus();
+  }
+
+  useEffect(() => {
+    if (!focusAfterRun.current) return;
+    focusAfterRun.current = false;
+    focusResult();
+  }, [tested]);
 
   function update(field: string, value: CaseValue) {
     if (draft[field] === value) return;
@@ -105,30 +118,27 @@ export function CaseWorkbench({ mission, exercise, record, speaker, onChange, on
     </header>
     <blockquote className="casework-opening">“{exercise.opening}” <cite>{speaker}</cite></blockquote>
 
-    <div className="casework-grid">
-      <section className="casework-panel casework-evidence" aria-label={inputs}>
-        <h4><ClipboardList size={17} aria-hidden="true" />{inputs}</h4>
-        {exercise.references.map(([name, content], index) => <div className="casework-source" key={name}>
-          <button type="button" aria-expanded={references.includes(name)} aria-controls={id + "-source-" + index}
-            onClick={() => setReferences((open) => open.includes(name) ? open.filter((entry) => entry !== name) : [...open, name])}>
-            {name}<ArrowRight size={15} aria-hidden="true" />
-          </button>
-          <p id={id + "-source-" + index} hidden={!references.includes(name)}>{content}</p>
-        </div>)}
-        <details className="casework-before">
-          <summary>See what happens now</summary>
-          <Replay result={baseline} />
-        </details>
-      </section>
-      <section className="casework-panel casework-controls" aria-label={edit}>
-        {capacity && <Capacity value={capacity} />}
-        <CaseSurface {...{ exercise, layout, draft, update, busy }} />
+    <section className="casework-panel casework-controls" aria-label={edit} ref={workbench}>
+      {capacity && <Capacity value={capacity} />}
+      <CaseSurface missionId={mission.id} retestCurrent={testedAgain === draft} {...{ exercise, layout, draft, update, busy, baseline, result, retest, sampleCurrent }} />
+      <div className="casework-run-actions">
         <button type="button" className="button button-primary" onClick={() => {
-          setTested(draft);
-          requestAnimationFrame(() => output.current?.focus());
+          if (sampleCurrent) focusResult();
+          else {
+            focusAfterRun.current = true;
+            setTested(draft);
+          }
         }}><Play size={16} aria-hidden="true" />{run}</button>
-      </section>
-    </div>
+        {result && <button type="button" className="button button-outline" onClick={() => output.current?.focus()}>
+          {result.passed && sampleCurrent ? "See results and new case" : "See all results"}
+        </button>}
+      </div>
+    </section>
+    <details className="casework-file">
+      <summary><ClipboardList size={17} aria-hidden="true" />{inputs} · complete case file</summary>
+      <dl>{exercise.references.map(([name, content]) => <div key={name}><dt>{name}</dt><dd>{content}</dd></div>)}</dl>
+      <details className="casework-before"><summary>Replay the starting setup</summary><Replay result={baseline} /></details>
+    </details>
 
     {result && <section className="casework-results" aria-label="Replay results">
       <h4 tabIndex={-1} ref={output}>Sample replay</h4>

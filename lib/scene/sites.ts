@@ -28,6 +28,12 @@ export type Environment = {
   focusDistrict?: (id: import("./districts").DistrictId) => void;
   cameraNear?: (x: number, z: number) => void;
   setWorkload?: (staffHours: number) => void;
+  /** Rooms with a waiting line and callback bench (lib/scene/room-reactions.ts). */
+  setRoomReaction?: (state: import("./room-reactions").RoomReaction | null, immediate: boolean) => void;
+  /** Show a ✓ / "!" over a station or the person working it; returns false for an unknown station. */
+  setStationOutcome?: (stationId: string, outcome: import("./room-reactions").StationOutcome) => boolean;
+  /** Where to point the camera on phones while a room reaction is framed. */
+  reactionFocus?: THREE.Vector3;
   setAssignmentComplete?: (complete: boolean) => void;
   setMissionReplay?: (replay: MissionRoomReplay | null, immediate: boolean) => void;
 };

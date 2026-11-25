@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { followRoute } from "./actors";
-import { lightModel, modelLoader, releaseModels } from "./gltf";
+import { compactModel, lightModel, modelLoader, releaseModels } from "./gltf";
 import type { ModelState } from "./gltf";
 
 
@@ -11,6 +11,8 @@ export function loadOliveCorner(
   fallbackActors: { sofia: THREE.Object3D; micah: THREE.Object3D },
   onState: (state: ModelState) => void,
   invalidate: () => void,
+  /** False keeps Sofia and Micah as their one-draw stand-ins (the lean tier); the models cost five draws each. */
+  withCharacters = true,
 ) {
   const loader = modelLoader();
   const path = "/models/olive-corner/";
@@ -27,7 +29,7 @@ export function loadOliveCorner(
     }
   }
 
-  for (const name of ["olive-and-13th", "sofia", "micah"] as const) {
+  for (const name of withCharacters ? ["olive-and-13th", "sofia", "micah"] as const : ["olive-and-13th"] as const) {
     void loader.loadAsync(`${path}${name}.glb`).then((model) => {
       if (ended) {
         releaseModels([model]);
@@ -35,6 +37,7 @@ export function loadOliveCorner(
       }
       const { scene, animations } = model;
       lightModel(scene, name === "olive-and-13th");
+      compactModel(scene);
       world.add(scene);
       active.push(model);
       if (name === "olive-and-13th") {

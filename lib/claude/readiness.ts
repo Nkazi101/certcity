@@ -1,6 +1,4 @@
 import { progressScope, readProgressItem, writeProgressItem } from "../progress-storage";
-import { domainSampleMinimum, reassessmentMinutes } from "./assessment/forms";
-import { examMinutes, julyGuideUrls } from "./blueprints";
 import type { Track } from "./blueprints";
 import { capstoneEvidence, validCapstoneAttempt, validNewCapstoneAttempt } from "./capstones";
 import type { CapstoneAttempt } from "./capstones/model";
@@ -8,9 +6,8 @@ import { bridges } from "./curriculum/bridges";
 import { objectiveCoverage } from "./curriculum";
 import { decemberBlueprint, decemberVersion, rehearsalBlueprint } from "./december-blueprints";
 import type { ExamVersion } from "./december-blueprints";
-import { itemDomain, score, sessionItems } from "./practice";
-import type { Attempt } from "./practice";
 import { readinessKey } from "./progress-keys";
+import { lessonObjectiveFor } from "./lessons/paths";
 
 export { readinessKey } from "./progress-keys";
 
@@ -80,10 +77,10 @@ export async function updateReadiness(track: Track, fallback: ReadinessProgress,
       else if (!current.workshop) next = { ...current, workshop: true };
     } else {
       const { attempt } = action;
-      if (!validNewCapstoneAttempt(attempt) || attempt.trackId !== track.id) error = "Check the practical case before submitting again.";
+      if (!validNewCapstoneAttempt(attempt) || attempt.trackId !== track.id) error = "Check the practical mission before submitting again.";
       else if (!current.capstones.some(({ id }) => id === attempt.id)) {
         const { transferDue } = capstoneEvidence(track.id, attempt.version, current.capstones, Date.now());
-        if (attempt.stage === "transfer" && (transferDue === null || transferDue > attempt.submittedAt)) error = "The delayed case is still locked.";
+        if (attempt.stage === "transfer" && (transferDue === null || transferDue > attempt.submittedAt)) error = "The delayed scenario is still locked.";
         else next = { ...current, capstones: [...current.capstones, attempt] };
       }
     }
@@ -104,52 +101,25 @@ export async function updateReadiness(track: Track, fallback: ReadinessProgress,
 
 export const rehearsalTarget = { overall: 80, domain: 67 };
 
-export function timedEvidence(track: Track, version: ExamVersion, attempts: readonly Attempt[], now = Date.now()) {
-  const blueprint = rehearsalBlueprint(track, version);
-  const guideIdentity = (url: string) => version === "july-2026" && url === julyGuideUrls[track.id] ? blueprint.guide : url;
-  const guideAttempts = attempts.filter((attempt) => (attempt.version ?? "july-2026") === version &&
-    attempt.submittedAt >= attempt.startedAt && attempt.submittedAt <= now);
-  const sorted = [...guideAttempts].sort((left, right) => left.submittedAt - right.submittedAt);
-  const focused = sorted.flatMap((attempt) => {
-    if (attempt.mode !== "reassessment" || attempt.domain === null || attempt.priorExposure?.length !== 0 ||
-        attempt.deadline !== attempt.startedAt + (attempt.snapshot?.minutes ?? reassessmentMinutes) * 60_000) return [];
-    const items = sessionItems(track, attempt);
-    if (items.length !== domainSampleMinimum || items.length !== attempt.itemIds.length ||
-        items.some((entry, index) => itemDomain(entry) !== attempt.domain || entry.pilot || entry.id !== attempt.itemIds[index])) return [];
-    return [{ attempt, items, guide: guideIdentity(attempt.snapshot?.guide ?? blueprint.guide), correct: score(items, attempt.answers) }];
-  });
-  return sorted.flatMap((attempt) => {
-    if (attempt.mode !== "assessment") return [];
-    const form = sessionItems(track, attempt);
-    if (form.length !== (attempt.snapshot?.guideCount ?? blueprint.count) || form.length !== attempt.itemIds.length ||
-        form.some((entry, index) => entry.id !== attempt.itemIds[index])) return [];
-    const items = form.filter(({ pilot }) => !pilot);
-    const domains = (attempt.snapshot?.domains ?? blueprint.domains).map(({ id, title }) => {
-      const group = items.filter((item) => itemDomain(item) === id);
-      const correct = score(group, attempt.answers);
-      const total = group.length;
-      const supplemental = focused.findLast((entry) => entry.attempt.domain === id && entry.attempt.startedAt >= attempt.submittedAt &&
-        entry.guide === guideIdentity(attempt.snapshot?.guide ?? blueprint.guide) &&
-        entry.items.every(({ id: itemId }) => !attempt.itemIds.includes(itemId)));
-      const replacesPriorSample = supplemental && total >= domainSampleMinimum;
-      const sampleCorrect = (replacesPriorSample ? 0 : correct) + (supplemental?.correct ?? 0);
-      const sampleTotal = (replacesPriorSample ? 0 : total) + (supplemental?.items.length ?? 0);
-      const status = sampleTotal < domainSampleMinimum ? "insufficient"
-        : Math.round(100 * sampleCorrect / sampleTotal) >= rehearsalTarget.domain ? "met" : "below";
-      return { id, title, correct, total, sampleCorrect, sampleTotal, status, reassessed: !!supplemental } as const;
-    });
-    const correct = score(items, attempt.answers);
-    const fresh = attempt.priorExposure?.length === 0;
-    const timed = attempt.deadline === attempt.startedAt + (attempt.snapshot?.minutes ?? examMinutes) * 60_000;
-    const overallMet = fresh && timed && correct * 100 >= rehearsalTarget.overall * items.length;
-    const met = overallMet && domains.every(({ status }) => status === "met");
-    return [{ attempt, domains, correct, total: items.length, fresh, overallMet, met }];
-  });
+/**
+ * City cases count toward ready. The city teaches by doing first, so the bar asks for that doing: every exam domain
+ * the track's cases cover needs at least one objective applied in a case on your own (no revealed answer or worked
+ * example). A handful of cases meets it; it never requires finishing the whole city.
+ */
+/** City cases are tagged with their original guide's objectives; count them in the guide the learner is preparing for. */
+export function cityEvidenceFor(track: Track, version: ExamVersion | undefined, applied: ReadonlySet<string>, covered: ReadonlySet<string>) {
+  if (version !== decemberVersion || track.id === "architect-foundations") return cityEvidence(track, applied, covered);
+  const map = (objectives: ReadonlySet<string>) => new Set([...objectives].map((objective) => lessonObjectiveFor(track, undefined, objective)).filter((entry): entry is string => !!entry));
+  return cityEvidence(rehearsalBlueprint(track, version), map(applied), map(covered));
 }
 
-export function benchmarkEvidence(track: Track, version: ExamVersion, progress: ReadinessProgress, attempts: readonly Attempt[], now: number) {
-  const forms = timedEvidence(track, version, attempts, now);
-  const timed = forms.find(({ met }) => met) ?? forms.filter(({ fresh }) => fresh).at(-1) ?? null;
-  const practical = capstoneEvidence(track.id, version, progress.capstones, now);
-  return { timed, practical, repeated: timed ? null : forms.at(-1) ?? null, met: !!(timed?.met && practical.capstone && practical.transfer) };
+export function cityEvidence(track: Pick<Track, "domains">, applied: ReadonlySet<string>, covered: ReadonlySet<string>) {
+  const inDomain = (id: number) => (objective: string) => Number(objective.split(".")[0]) === id;
+  const domains = track.domains.map(({ id, title }) => ({
+    id, title,
+    covered: [...covered].filter(inDomain(id)).length,
+    applied: [...applied].filter(inDomain(id)).length,
+  })).filter(({ covered: count }) => count > 0);
+  return { domains, applied: domains.filter(({ applied: count }) => count > 0).length, met: domains.every(({ applied: count }) => count > 0) };
 }
+

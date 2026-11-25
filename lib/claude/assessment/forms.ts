@@ -1,4 +1,4 @@
-import { decemberBlueprints, decemberVersion } from "../december-blueprints";
+import { decemberBlueprints, decemberVersion, hasDecemberGuide } from "../december-blueprints";
 import type { ExamVersion } from "../december-blueprints";
 import { alignItem, associateAlignment, developerAlignment, professionalAlignment } from "./december-alignment";
 import type { Alignment } from "./december-alignment";
@@ -17,13 +17,16 @@ import { architectRetest } from "./retest-architect";
 import { professionalRetest, professionalDecemberRetest } from "./retest-professional";
 import { arrangeRetest } from "./retest-author";
 import { recoveryBank } from "./recovery-bank";
+import { developerProfessionalAssessment } from "./developer-professional";
+import { developerProfessionalRetest } from "./developer-professional-retest";
+import { developerProfessionalScores, developerProfessionalUnscored } from "../tracks/developer-professional";
 
 export const rehearsalFormIds = ["original", "retest", "recovery"] as const;
 export type RehearsalForm = (typeof rehearsalFormIds)[number];
 
 export function rehearsalFormLabel(form?: RehearsalForm) {
-  if (form === "recovery") return "Fresh reassessment";
-  return form === "retest" ? "Alternate rehearsal" : "First rehearsal";
+  if (form === "recovery") return "Practice exam 3";
+  return form === "retest" ? "Practice exam 2" : "Practice exam 1";
 }
 
 export const assessmentForms: Record<TrackId, readonly PracticeItem[]> = {
@@ -31,6 +34,8 @@ export const assessmentForms: Record<TrackId, readonly PracticeItem[]> = {
   "developer-foundations": developerAssessment,
   "architect-foundations": architectAssessment,
   "architect-professional": professionalAssessment,
+  // Authored to the v1.0 blueprint: 60 scored items plus 10 marked unscored (pilot), keys already balanced.
+  "developer-professional": developerProfessionalAssessment,
 };
 
 function buildDecemberForm(track: keyof typeof decemberBlueprints, candidates: readonly PracticeItem[]) {
@@ -58,6 +63,7 @@ const alternatePools: Record<TrackId, readonly PracticeItem[]> = {
   "developer-foundations": developerRetest,
   "architect-foundations": architectRetest,
   "architect-professional": professionalRetest,
+  "developer-professional": developerProfessionalRetest,
 };
 
 const alternateDecemberForms = {
@@ -97,20 +103,25 @@ const alternateForms: Record<TrackId, PracticeItem[]> = {
   "developer-foundations": buildAlternateForm("developer-foundations"),
   "architect-foundations": buildAlternateForm("architect-foundations"),
   "architect-professional": buildAlternateForm("architect-professional"),
+  "developer-professional": [...developerProfessionalRetest],
 };
 
 export function rehearsalItems(track: TrackId, version?: ExamVersion, form: RehearsalForm = "original", seen: ReadonlySet<string> = new Set()) {
   if (form === "recovery") return selectRecoveryForm(track, version, seen);
-  if (version === decemberVersion && track !== "architect-foundations") {
+  if (version === decemberVersion && hasDecemberGuide(track)) {
     return form === "retest" ? alternateDecemberForms[track] : decemberForms[track];
   }
   return form === "retest" ? alternateForms[track] : assessmentForms[track];
 }
 
 function recoveryGuide(track: TrackId, version?: ExamVersion) {
-  if (track !== "architect-foundations" && version === decemberVersion) {
+  if (hasDecemberGuide(track) && version === decemberVersion) {
     const guide = decemberBlueprints[track];
     return { ...guide, unscored: 10 };
+  }
+  if (track === "developer-professional") {
+    const guide = tracks.find(({ id }) => id === track)!;
+    return { ...guide, scores: developerProfessionalScores, unscored: developerProfessionalUnscored };
   }
   const guide = tracks.find(({ id }) => id === track)!;
   return { ...guide, scores: weightedCounts(guide.domains, guide.count), unscored: 0 };

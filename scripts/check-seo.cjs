@@ -1,13 +1,19 @@
 const assert = require("node:assert/strict");
-const { existsSync, readFileSync } = require("node:fs");
+const { existsSync, readdirSync, readFileSync } = require("node:fs");
 const { join } = require("node:path");
 const { gzipSync } = require("node:zlib");
 
 const output = join(__dirname, "..", "out");
-const tracks = ["associate-foundations", "developer-foundations", "architect-foundations", "architect-professional"]
+const tracks = ["associate-foundations", "developer-foundations", "architect-foundations", "architect-professional", "developer-professional"]
   .map((id) => `/certifications/${id}`);
 const resources = ["/certifications/december-2026-exam-changes", "/certifications/architect-foundations/city-dispatch-case", "/certifications/methodology"];
-const paths = ["/", "/certifications", ...tracks, "/help", ...resources];
+// Study guides: one index per track plus one static page per lesson.
+const study = tracks.flatMap((track) => {
+  const folder = join(__dirname, "..", "out", track.slice(1), "study");
+  const lessons = existsSync(folder) ? readdirSync(folder).filter((file) => file.endsWith(".html")).map((file) => `${track}/study/${file.slice(0, -5)}`) : [];
+  return [`${track}/study`, ...lessons];
+});
+const paths = ["/", "/certifications", ...tracks, ...study, "/help", ...resources];
 const maxLandingScriptBytes = 350 * 1024;
 const read = (file) => readFileSync(join(output, file), "utf8");
 

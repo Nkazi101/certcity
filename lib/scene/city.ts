@@ -86,7 +86,10 @@ function lamp(kit: ModelKit, group: THREE.Object3D, x: number, z: number) {
   const cast = kit.material("#52665b");
   kit.cylinder(group, [x, .1, z], .34, .2, cast);
   kit.cylinder(group, [x, 1.05, z], .095, 2.1, cast, true);
-  kit.box(group, [x, 2.18, z], [.29, .28, .29], kit.material("#fff1bd"), true);
+  const bulb = kit.box(group, [x, 2.18, z], [.29, .28, .29], kit.material("#fff1bd"), true);
+  bulb.userData.glow = 1.7;
+  bulb.userData.lamp = true;
+  bulb.userData.pool = 2.18;
   kit.cylinder(group, [x, 2.36, z], .37, .1, cast, true);
 }
 
@@ -453,7 +456,7 @@ export function buildCity(kit: ModelKit, scene: THREE.Scene, onArtState: (state:
     [[-15.1, -31.6], [-3.2, -31.6], [-3.2, -27], [-15.2, -27]],
     [[4.02, -30.8], [21.2, -30.8], [21.2, -42.8], [4.02, -42.8]],
   ] as [number, number][][];
-  const animate = pedestrians.flatMap((path, group) => (group < 4 ? [0, 1, 2] : [0, 1]).map((index) => {
+  const animate = pedestrians.flatMap((path, group) => (kit.lean ? group < 4 ? [0, 1] : [0] : group < 4 ? [0, 1, 2] : [0, 1]).map((index) => {
     const worker = makePerson(kit, actors, clothes[(group + index) % clothes.length], .74 + index * .085);
     const route = followRoute(path, 1.03 + index * .09, index * 7.5 + group * 3.1);
     return (time: number) => {

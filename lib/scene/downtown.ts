@@ -4,6 +4,7 @@ import { followRoute, makePerson, makeVehicle, rollingHubs } from "./actors";
 import { ModelKit, seededRandom } from "./model-kit";
 import { landmark } from "./sites";
 import { loadOliveCorner } from "./olive-corner";
+import { compactModel } from "./gltf";
 import type { ModelState } from "./gltf";
 import type { Environment } from "./sites";
 import { oliveStreetLife } from "./olive-street-life";
@@ -213,7 +214,9 @@ function block(kit: ModelKit, parent: THREE.Group, { x, z, w, d, floors, color, 
         const paneWidth = pitch * (style === "glass" ? .89 : .59);
         const paneHeight = story * (style === "glass" ? .81 : .66);
         kit.box(face, [u, y, .018], [paneWidth + .081, paneHeight + .075, .056], windowColors[0]).castShadow = false;
-        kit.box(face, [u, y, .058], [paneWidth, paneHeight, .051], windowColors[Math.floor(rand() * 3.4)]).castShadow = false;
+        const pane = kit.box(face, [u, y, .058], [paneWidth, paneHeight, .051], windowColors[Math.floor(rand() * 3.4)]);
+        pane.castShadow = false;
+        pane.userData.glow = background ? .8 : 1;
         if (!background || style === "glass") {
           kit.box(face, [u, y, .093], [paneWidth, .044, .032], style === "glass" ? stone : windowColors[0]).castShadow = false;
         }
@@ -563,13 +566,25 @@ export function addDowntown(kit: ModelKit, scene: THREE.Scene, onArtState: (stat
     [39.69, 6.85, 0, "#7d96a2"], [38.96, -22.41, Math.PI / 2, "#5a8380"],
     [55.7, 22.55, Math.PI / 2, "#a8674f"], [60.8, 22.52, Math.PI / 2, "#78987b"],
   ] as const;
-  for (const [index, [x, z, rotation, color]] of parking.entries()) {
+  const parkedArt = [...parking.entries()].map(([index, [x, z, rotation, color]]) => {
     const car = makeVehicle(kit, parked, color);
     car.position.set(x, .065, z);
     car.rotation.y = rotation;
     car.scale.setScalar(.76);
-    models.upgradeDowntownCar(car, index % 3 === 0 ? "crossover" : "sedan", color);
-  }
+    return models.upgradeDowntownCar(car, index % 3 === 0 ? "crossover" : "sedan", color);
+  });
+  // Parked cars never move: once every model is in, fold them into one mesh per material (paint colours baked).
+  const parkedMerged: THREE.Mesh[] = [];
+  let parkedDisposed = false;
+  void Promise.all(parkedArt).then((loaded) => {
+    if (parkedDisposed || !loaded.every(Boolean)) return;
+    const before = new Set(parked.children);
+    compactModel(parked, () => false, false);
+    parked.children.forEach((child) => {
+      if (!before.has(child) && child instanceof THREE.Mesh) parkedMerged.push(child);
+    });
+    models.invalidate();
+  });
   kit.batch(streets);
   kit.batch(center);
   kit.batch(surrounding);
@@ -590,7 +605,7 @@ export function addDowntown(kit: ModelKit, scene: THREE.Scene, onArtState: (stat
     oliveTilework(kit, scene, ready ? .051 : .079);
     streetLife.setCornerArt(ready);
     onArtState(state);
-  }, models.invalidate);
+  }, models.invalidate, !kit.lean);
   const plazaLife = plazaVisitors(kit, scene);
   const plazaRipples = waterRipples(kit, scene, [[52.02, .338, 11.12, .92], [52.26, .339, 11.05, 1.13]]);
 
@@ -607,7 +622,7 @@ export function addDowntown(kit: ModelKit, scene: THREE.Scene, onArtState: (stat
     ["#e3a841", "#805440", "#3e312e"], ["#655795", "#cb9573", "#593a2e"],
     ["#7c9a61", "#d8a385", "#48362e"], ["#5a789d", "#a87559", "#524032"],
   ];
-  const moving = routes.flatMap((path, row) => [0, 1].map((i) => {
+  const moving = routes.flatMap((path, row) => (kit.lean ? [0] : [0, 1]).map((i) => {
     const colorIndex = (row + i * 3) % clothes.length;
     const citizen = makePerson(kit, actors, clothes[colorIndex], .80 + i * .11, colorIndex, .91 + (row % 3)*.1);
     if (i === 0) models.upgradeDowntownWalker(citizen.person, row);
@@ -648,6 +663,7 @@ export function addDowntown(kit: ModelKit, scene: THREE.Scene, onArtState: (stat
     for (const x of [-.43, .43]) {
       kit.box(brakes, [x, .69, model === "crossover" ? -1.52 : -1.44], [.21, .095, .044], brake, true).castShadow = false;
     }
+    kit.batchActor(brakes);
     const roll = rollingHubs(kit, car);
     let yaw = 0;
     moving.push((time) => {
@@ -671,6 +687,11 @@ export function addDowntown(kit: ModelKit, scene: THREE.Scene, onArtState: (stat
       plazaRipples.update(time);
     },
     dispose() {
+      parkedDisposed = true;
+      parkedMerged.forEach((mesh) => {
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+      });
       brakeMaterials.forEach((material) => material.dispose());
       streetLife.dispose();
       plazaRipples.dispose();

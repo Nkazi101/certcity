@@ -49,7 +49,7 @@ function lamp(kit: ModelKit, group: THREE.Group, x: number, z: number) {
   const cast = kit.material("#4a5b52");
   kit.cylinder(group,[x,.26,z],.19,.33,cast);
   kit.cylinder(group,[x,1.37,z],.075,2.62,cast);
-  kit.box(group,[x,2.7,z],[.30,.075,.18],kit.material("#f2d89c"),true);
+  Object.assign(kit.box(group,[x,2.7,z],[.30,.075,.18],kit.material("#f2d89c"),true).userData, { glow: 1.7, lamp: true, pool: 2.7 });
 }
 
 function plantedBed(kit: ModelKit, group: THREE.Group, x: number, z: number, length: number, seed: number) {

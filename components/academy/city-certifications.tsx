@@ -1,9 +1,10 @@
-import { ArrowRight, BookOpen, Check, Clock3, GraduationCap, Lock, MapPin, X } from "lucide-react";
+import { ArrowRight, Check, Clock3, GraduationCap, MapPin, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { places } from "../../lib/world";
 import { trackPracticeHref, tracks, trackTitle } from "../../lib/claude/blueprints";
+import { availableProviders } from "../../lib/certifications/providers";
 import { decemberVersion, examGuideLabel } from "../../lib/claude/december-blueprints";
 import { readReadiness, readinessKey } from "../../lib/claude/readiness";
 import { objectiveCoverage } from "../../lib/claude/curriculum";
@@ -24,28 +25,65 @@ export function CityCertificationDialog({ dialog, selected, onSelect }: {
     <dialog ref={dialog} className="game-dialog city-certifications" aria-labelledby="city-certifications-title">
       <header className="dialog-header">
         <img className="city-certifications-mark" src="/brand/mark-primary.svg" width={32} height={32} alt="" />
-        <h2 id="city-certifications-title">Choose a certification</h2>
-        <button className="icon-button" type="button" aria-label="Close certifications" onClick={() => dialog.current?.close()}><X size={20} aria-hidden="true" /></button>
+        <h2 id="city-certifications-title">Choose your exam</h2>
+        <button className="icon-button" type="button" aria-label="Close exam list" onClick={() => dialog.current?.close()}><X size={20} aria-hidden="true" /></button>
       </header>
       <div className="dialog-body">
-        <ul className="city-certification-list">
-          {tracks.map((track) => (
-            <li key={track.id}>
-              <button type="button" onClick={() => onSelect(track)} aria-current={selected?.id === track.id ? "true" : undefined}>
-                <span className="city-certification-icon">{selected?.id === track.id ? <Check size={19} aria-hidden="true" /> : <GraduationCap size={19} aria-hidden="true" />}</span>
-                <span><strong>{track.role} · {track.level}</strong><small>{track.code} · {track.domains.length} city practice domains</small></span>
-                <ArrowRight size={17} aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
-        <Link className="button button-outline city-study-link" href="/certifications"><BookOpen size={16} aria-hidden="true" /> Exam practice and guides <ArrowRight size={16} aria-hidden="true" /></Link>
+        {availableProviders.map((provider) => <section key={provider.id} aria-labelledby={`provider-${provider.id}`}>
+          <h3 className="city-provider-heading" id={`provider-${provider.id}`}>{provider.name}</h3>
+          <ul className="city-certification-list city-exam-list">
+            {tracks.filter((track) => track.provider === provider.id).map((track) => (
+              <li key={track.id}>
+                <button type="button" onClick={() => onSelect(track)} aria-current={selected?.id === track.id ? "true" : undefined}>
+                  <span className="city-exam-code">{track.code}</span>
+                  <span><strong>{track.role} {track.level}</strong><span className="city-track-description">{track.description}</span></span>
+                  {selected?.id === track.id ? <Check size={18} aria-hidden="true" /> : <ArrowRight size={17} aria-hidden="true" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>)}
+        <ExamFit onSelect={onSelect} />
+        <Link className="button button-text city-study-link" href="/certifications">Browse the catalog</Link>
       </div>
     </dialog>
   );
 }
 
-export function MissionJournal({ dialog, track, records, legacy, progress, currentGuide = false, requestedMission, dispatchDueAt, onMission, onStudy, onChangeTrack }: {
+const fitQuestions = [
+  { id: "code", text: "Do you write code that calls an AI model, or configure tools like Claude Code?" },
+  { id: "design", text: "Do you design how agents, tools and data fit together for a team or product?" },
+  { id: "lead", text: "Do you decide how AI rolls out across an organization: budgets, governance, vendors?" },
+] as const;
+
+/**
+ * Three yes/no questions that point to an exam, for people who don't know the codes. Provider-neutral: it recommends by
+ * each track's audience, so other providers' exams can join the list without new logic.
+ */
+function ExamFit({ onSelect }: { onSelect: (track: Track) => void }) {
+  const [answers, setAnswers] = useState<Partial<Record<(typeof fitQuestions)[number]["id"], boolean>>>({});
+  const answered = fitQuestions.every(({ id }) => answers[id] !== undefined);
+  const audience = answers.lead ? "lead" : answers.design ? "design" : answers.code ? "code" : "use";
+  // When two exams share an audience (CCDV-F and CCDV-P both serve people who write code), recommend the Foundations one.
+  const pick = availableProviders.flatMap((provider) => tracks.filter((track) => track.provider === provider.id && track.audience === audience))
+    .sort((left, right) => Number(left.level !== "Foundations") - Number(right.level !== "Foundations"))[0];
+  return <details className="conversation-file city-exam-fit">
+    <summary>Not sure which one fits you?</summary>
+    <form onSubmit={(event) => event.preventDefault()}>
+      {fitQuestions.map(({ id, text }) => <fieldset key={id}>
+        <legend>{text}</legend>
+        <label><input type="radio" name={`fit-${id}`} checked={answers[id] === true} onChange={() => setAnswers({ ...answers, [id]: true })} /> Yes</label>
+        <label><input type="radio" name={`fit-${id}`} checked={answers[id] === false} onChange={() => setAnswers({ ...answers, [id]: false })} /> No</label>
+      </fieldset>)}
+    </form>
+    {answered && pick && <p role="status" className="city-exam-fit-result">
+      Start with <strong>{pick.code} · {pick.role} {pick.level}</strong>. {audience === "use" ? "It needs no coding, and it’s the usual first exam for students and people new to Claude." : "You can still begin with Associate if you’re new to Claude."}{" "}
+      <button type="button" className="button button-outline" onClick={() => onSelect(pick)}>Choose {pick.code}</button>
+    </p>}
+  </details>;
+}
+
+export function MissionJournal({ dialog, track, records, legacy, progress, currentGuide = false, requestedMission, dispatchDueAt, onMission, onStudy, onChangeTrack, onToggleProgress }: {
   dialog: RefObject<HTMLDialogElement | null>;
   track: Track;
   records: PortfolioRecords;
@@ -57,6 +95,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, curre
   onStudy: (mission: Mission, page: "check" | "followup") => void;
   dispatchDueAt?: number | null;
   onChangeTrack: () => void;
+  onToggleProgress?: () => void;
 }) {
   const [now, setNow] = useState(0);
   const [guidePracticed, setGuidePracticed] = useState<string[]>([]);
@@ -99,7 +138,7 @@ export function MissionJournal({ dialog, track, records, legacy, progress, curre
   const available = evidence.missions.filter((mission) => !unmetMissions(mission, records, legacy).length && !missingExpertise(mission, records).length && !missionCompleted(mission, records, legacy));
   const completed = evidence.completed;
   const locked = evidence.missions.filter((mission) => !missionCompleted(mission, records, legacy) && (unmetMissions(mission, records, legacy).length || missingExpertise(mission, records).length));
-  const heading = progress ? "Pathway progress" : "City missions";
+  const heading = progress ? "Progress" : "City missions";
 
   function rows(items: readonly Mission[], showLocked = false) {
     return <ul className="city-certification-list mission-journal-list">
@@ -110,17 +149,19 @@ export function MissionJournal({ dialog, track, records, legacy, progress, curre
         const missing = missingExpertise(mission, records);
         const reviewMissions = completed.filter((candidate) => candidate.id !== mission.id &&
           missionMappings(candidate).some(({ objective }) => missing.includes(objective)));
-        const blockers = unmet.length ? `Complete ${unmet.map(({ title }) => title).join(" and ")}` :
-          `Take or review the exam checks for ${missing.join(", ")}`;
+        const blockers = unmet.length ? `Easier after ${unmet.map(({ title }) => title).join(" and ")}` :
+          `Easier after the practice questions for ${missing.join(", ")}`;
         const label = <>
-          <span className="city-certification-icon">{showLocked ? <Lock size={17} aria-hidden="true" /> : done ? <Check size={18} aria-hidden="true" /> : <MapPin size={19} aria-hidden="true" />}</span>
+          <span className="city-certification-icon">{showLocked ? <Clock3 size={17} aria-hidden="true" /> : done ? <Check size={18} aria-hidden="true" /> : <MapPin size={19} aria-hidden="true" />}</span>
           <span><strong>{mission.title}</strong><small>{place.name}{!showLocked && (records[mission.id]?.caseDraft || records[mission.id]?.workDraft || (!records[mission.id]?.casework && records[mission.id]?.draft)) && " · Draft saved"}{showLocked && ` · ${blockers}`}</small></span>
         </>;
         return <li key={mission.id} id={`journal-${mission.id}`} tabIndex={requestedMission === mission.id ? -1 : undefined}>{showLocked
-          ? <div className="mission-locked">{label}{!unmet.length && !!reviewMissions.length && <div className="mission-blocker-links">
-            {reviewMissions.map((entry) => <button className="button button-outline" type="button" key={entry.id}
-              onClick={() => onMission(entry)}>Revisit {entry.title}</button>)}
-          </div>}</div>
+          // Later cases are suggestions, never locks: any case opens, and the note says what makes it easier.
+          ? <div className="mission-locked"><button type="button" onClick={() => onMission(mission)}>{label}<ArrowRight size={17} aria-hidden="true" /></button>
+            {!unmet.length && !!reviewMissions.length && <div className="mission-blocker-links">
+              {reviewMissions.map((entry) => <button className="button button-outline" type="button" key={entry.id}
+                onClick={() => onMission(entry)}>Revisit {entry.title}</button>)}
+            </div>}</div>
           : <button type="button" onClick={() => onMission(mission)}>{label}<ArrowRight size={17} aria-hidden="true" /></button>}</li>;
       })}
     </ul>;
@@ -136,24 +177,24 @@ export function MissionJournal({ dialog, track, records, legacy, progress, curre
       <div className="dialog-body mission-journal-body">
         <p>{trackTitle(track)} · {examGuideLabel(track, currentGuide ? decemberVersion : undefined)}</p>
         <div className="mission-progress-summary">
-          <div><strong>{completed.length}/{evidence.missions.length}</strong><span>Assignments saved</span></div>
-          <div><strong>{evidence.applied.size}/{total}</strong><span>{currentGuide ? "July objectives applied in the city" : "Objectives applied in the city"}</span></div>
-          <div><strong>{evidence.demonstrated.size}/{total}</strong><span>{currentGuide ? "July first-seen objectives answered correctly" : "Objectives answered correctly on a first-seen exam check"}</span></div>
+          <div><strong>{completed.length}/{evidence.missions.length}</strong><span>Missions done</span></div>
+          <div><strong>{evidence.applied.size}/{total}</strong><span>{currentGuide ? "July objectives practiced in the city" : "Practiced in the city"}</span></div>
+          <div><strong>{evidence.demonstrated.size}/{total}</strong><span>{currentGuide ? "July objectives right first time" : "Right first time"}</span></div>
         </div>
         {!!schedule.length && <details className="academy-domain mission-review-schedule" open={schedule[0].due <= now}>
-          <summary><span><strong>Scheduled follow-ups</strong><small>
-            {schedule.filter(({ due }) => due <= now).length} ready · {schedule.filter(({ due }) => due > now).length} upcoming
+          <summary><span><strong>7-day reviews</strong><small>
+            {schedule.filter(({ due }) => due <= now).length} ready, {schedule.filter(({ due }) => due > now).length} upcoming
           </small></span><Clock3 size={17} aria-hidden="true" /></summary>
           <ul className="academy-objectives">
             {schedule.map(({ mission, due }) => <li key={mission.id}><span>{mission.title}</span>
               <button type="button" className="button button-outline" onClick={() => onStudy(mission, "followup")}>
-                {due <= now ? "Start follow-up" : timeFormat.format(due)}
+                {due <= now ? "Start 7-day review" : timeFormat.format(due)}
               </button></li>)}
           </ul>
         </details>}
         {progress ? <>
           {currentGuide && <section className="city-guide-progress" aria-labelledby="city-guide-progress-title">
-            <h3 id="city-guide-progress-title">Current guide practice</h3>
+            <h3 id="city-guide-progress-title">Current exam guide practice</h3>
             {objectiveCoverage(track, decemberVersion).map(({ id, title, skills }) => <details className="academy-domain" key={id}>
               <summary><span><strong>{title}</strong><small>{skills.filter(({ id }) => guidePracticed.includes(id)).length}/{skills.length} practiced</small></span></summary>
               <ul className="academy-objectives">{skills.map(({ id, title, missions }) => <li key={id}>
@@ -164,8 +205,8 @@ export function MissionJournal({ dialog, track, records, legacy, progress, curre
           </section>}
           {evidence.domains.map((domain) => (
             <details className="academy-domain" key={domain.id}>
-              <summary><span><strong>{domain.title}</strong><small>{domain.objectives.filter((_, i) => evidence.applied.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} applied in the city · {domain.objectives.filter((_, i) => evidence.demonstrated.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} correct on first-seen checks
-              {domain.objectives.some((_, i) => evidence.retained.has(`${domain.id}.${i + 1}`)) && ` · ${domain.objectives.filter((_, i) => evidence.retained.has(`${domain.id}.${i + 1}`)).length} recalled at follow-up`}
+              <summary><span><strong>{domain.title}</strong><small>{domain.objectives.filter((_, i) => evidence.applied.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} practiced in the city, {domain.objectives.filter((_, i) => evidence.demonstrated.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} right first time
+              {domain.objectives.some((_, i) => evidence.retained.has(`${domain.id}.${i + 1}`)) && `, ${domain.objectives.filter((_, i) => evidence.retained.has(`${domain.id}.${i + 1}`)).length} recalled at the 7-day review`}
               </small></span><span className="academy-weight">{domain.weight}% of exam</span></summary>
               <ul className="academy-objectives">
                 {domain.objectives.map((name, index) => {
@@ -173,20 +214,21 @@ export function MissionJournal({ dialog, track, records, legacy, progress, curre
                   const review = completed.find((mission) => missionMappings(mission).some(({ objective }) => objective === code) &&
                     (records[mission.id]?.check || mission.kind === "dispatch" && evidence.assessed.has(code)));
                   return <li key={code}><span>{code} · {name}</span>{review && evidence.assessed.has(code) && !evidence.demonstrated.has(code)
-                    ? <button type="button" className="button button-outline" onClick={() => onStudy(review, "check")}>Review exam check</button>
-                    : <span>{evidence.demonstrated.has(code) ? "First-seen answer correct" : evidence.applied.has(code) ? "Applied in city" : "In mission portfolio"}</span>}</li>;
+                    ? <button type="button" className="button button-outline" onClick={() => onStudy(review, "check")}>Review practice questions</button>
+                    : <span>{evidence.demonstrated.has(code) ? "Right first time" : evidence.applied.has(code) ? "Practiced in the city" : "Covered by a mission"}</span>}</li>;
                 })}
               </ul>
             </details>
           ))}
         </> : <>
           <section><h3>Available now</h3>{available.length ? rows(available) : <p>All currently available work is complete.</p>}</section>
-          {!!locked.length && <details className="conversation-file" open={locked.some(({ id }) => requestedMission === id) || undefined}><summary>Later missions · {locked.length}</summary>{rows(locked, true)}</details>}
-          {!!completed.length && <details className="conversation-file"><summary>Completed missions · {completed.length}</summary>{rows(completed)}</details>}
+          {!!locked.length && <details className="conversation-file" open={locked.some(({ id }) => requestedMission === id) || undefined}><summary>Later missions ({locked.length}) · open any time</summary>{rows(locked, true)}</details>}
+          {!!completed.length && <details className="conversation-file"><summary>Done ({completed.length})</summary>{rows(completed)}</details>}
         </>}
         <div className="conversation-actions">
-          <button type="button" className="button button-outline" onClick={onChangeTrack}>Switch certification</button>
-          <Link className="button button-outline city-study-link" href={trackPracticeHref(track)} prefetch={false}>Exam practice and guide <ArrowRight size={16} aria-hidden="true" /></Link>
+          {onToggleProgress && <button type="button" className="button button-outline" onClick={onToggleProgress}>{progress ? "See missions" : "See progress"}</button>}
+          <button type="button" className="button button-outline" onClick={onChangeTrack}>Switch exam</button>
+          <Link className="button button-text city-study-link" href={trackPracticeHref(track)} prefetch={false}>Practice exams and lessons</Link>
         </div>
       </div>
     </dialog>

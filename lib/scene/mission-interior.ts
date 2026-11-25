@@ -11,6 +11,8 @@ import type { RoomPalette as Palette } from "./room-architecture";
 import { roomSavedArt, roomSceneArt } from "./room-scenes";
 import type { RoomStation } from "./room-scenes";
 import { buildRoomReplay } from "./room-replay";
+import { buildRoomReactions, createStationBadges } from "./room-reactions";
+import type { ReactionLayout } from "./room-reactions";
 
 const palettes: Record<RoomKind, Palette> = {
   archive: { wall: "#c7b993", trim: "#55796c", floor: "#b18b60", wood: "#a97854", accent: "#6b9278", metal: "#60756d" },
@@ -255,8 +257,26 @@ const roomResidents: Record<RoomKind, readonly [number, number, number, number]>
   archive: [1.14, 1.34, 4.84, 1.28], printshop: [-3.72, 2.70, 1.60, 2.54],
   kitchen: [-5.43, -.74, -2.93, -.28], community: [-4.66, .15, .42, 1.84],
   office: [-1.08, -.18, 2.23, 2.90], workshop: [-1.6, 1.98, 2.50, 1.80],
-  market: [-1.37, -.47, 2.45, .13], school: [-4.16, .12, -1.33, .13],
+  market: [-1.37, -.47, 2.45, .13], school: [-4.35, -2.62, -2.55, -2.7],
   courthouse: [-3.20, .13, 1.64, .09], dispatch: [-2.00, -.68, 1.62, -1.21],
+};
+
+// Maplewood School's front office: families line up at the counter's front, and anyone owed a call back waits on a
+// bench to the right of the counter under an amber lamp. Staff stand behind the counter.
+const schoolReactionLayout: ReactionLayout = {
+  floor: .31,
+  slots: [[-3.4, -.2], [-3.4, .58], [-3.15, 1.32], [-2.45, 1.7], [-1.7, 1.75], [-.95, 1.8], [-.2, 1.85]],
+  deskFacing: Math.PI,
+  entrance: [-.6, 6.1],
+  arrival: [[-.6, 2.55]],
+  exit: [[-2.6, .45], [-.6, 2.6], [-.6, 6.3]],
+  toBench: [[-2.6, .45], [-1.05, -.55]],
+  benchExit: [[-1.05, -.55], [-.6, 2.6], [-.6, 6.3]],
+  benchSpots: [[-.45, -2.2], [.15, -2.2], [.75, -2.2], [-.15, -1.6], [.45, -1.6], [1.05, -1.6]],
+  benchFacing: -1.2,
+  bench: { x: .25, z: -2.75, rotation: 0, width: 2 },
+  post: { x: 1.6, z: -2.75, rotation: 0, text: "CALLBACKS" },
+  focus: [-1.1, -1],
 };
 
 const peopleColors = [
@@ -320,6 +340,7 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
     resident.person.rotation.y = Math.atan2(station[0] - x, station[1] - z);
   }
   if (kind === "office") residents[1].sit(.67);
+  const reactions = kind === "school" ? buildRoomReactions(kit, scene, interior, schoolReactionLayout) : null;
   kit.batch(interior);
   const replayArt = buildRoomReplay(kit, scene, missionId, station, stationHeight);
   const points = [
@@ -327,6 +348,11 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
     landmark("evidence", evidenceDesk.x, evidenceDesk.z, evidenceDesk.width, 1, 1.16),
     ...residents.map(({ person }, index) => landmark(`stakeholder-${index}`, person.position.x, person.position.z, .85, .8, 1.25)),
   ];
+  // Result badges for lab runs and shifts: over the work station, the case file, and each person in the room.
+  const badges = reactions?.stations ?? createStationBadges(scene);
+  badges.add("work", new THREE.Vector3(station[0], stationHeight + 1.15, station[1]));
+  badges.add("evidence", new THREE.Vector3(evidenceDesk.x, 2.05, evidenceDesk.z));
+  residents.forEach(({ person }, index) => badges.add(`stakeholder-${index}`, person));
   const finished = new THREE.Group();
   const incoming = new THREE.Group();
   {
@@ -382,8 +408,13 @@ export function buildMissionInterior(kit: ModelKit, scene: THREE.Scene, { kind, 
       liveReplay = replayArt.set(replay, immediate);
       showWork();
     } : undefined,
+    setRoomReaction: reactions ? (state, immediate) => reactions.set(state, immediate) : undefined,
+    setStationOutcome: badges.set,
+    reactionFocus: reactions?.focus,
     update(time) {
       replayArt?.update();
+      if (reactions) reactions.update(time);
+      else badges.update(time);
       residents[0].work(time * 2.3 + .2, kind === "market" || kind === "kitchen" ? "pack" : kind === "school" ? "type" : "general");
       residents[1].work(time * 2.7 + 1.1, kind === "kitchen" ? "scan" : kind === "office" || kind === "printshop" || kind === "archive" ? "type" : "general");
     },

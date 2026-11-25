@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "check:claude": "node scripts/check-claude-content.cjs && node scripts/check-claude-capstones.cjs && node scripts/check-claude-evidence.cjs",
-    "check:city": "node scripts/check-city-routes.cjs",
+    "check:claude": "node scripts/check-claude-content.cjs && node scripts/check-claude-capstones.cjs && node scripts/check-claude-evidence.cjs && node scripts/check-labs.cjs && node scripts/check-glossary.cjs",
+    "check:city": "node scripts/check-city-routes.cjs && node scripts/check-dispatch-shift.cjs && node scripts/check-shifts.cjs && node scripts/check-today.cjs",
     "check:recovery": "node scripts/check-progress-recovery.cjs",
-    "check:seo": "node scripts/check-seo.cjs"
+    "check:notifications": "node scripts/check-notifications.cjs",
+    "check:seo": "node scripts/check-seo.cjs",
+    "check:guide": "node scripts/check-guide-decisions.cjs --enforce"
   },
   "engines": {
     "node": ">=22"

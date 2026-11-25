@@ -93,6 +93,8 @@ function arch(kit: ModelKit, scene: THREE.Scene) {
         [.026, .038, .083], glass);
       pane.rotation.z = sign * Math.PI / 6;
       pane.castShadow = false;
+      pane.userData.glow = 1.4;
+      pane.userData.lamp = true;
     }
   }
 

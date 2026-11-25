@@ -1,6 +1,6 @@
 import type { TrackId } from "../blueprints";
 import type { ExamVersion } from "../december-blueprints";
-import { decemberVersion } from "../december-blueprints";
+import { decemberVersion, hasDecemberGuide } from "../december-blueprints";
 import type { PracticeItem } from "../items";
 import { associateAlignment, developerAlignment, professionalAlignment } from "./december-alignment";
 import { associateReserve } from "./recovery-associate";
@@ -10,6 +10,8 @@ import { developerReserve } from "./recovery-developer";
 import { developerFocused } from "./focused-developer";
 import { professionalReserve } from "./recovery-professional";
 import type { RecoveryItem } from "./recovery-author";
+import { developerProfessionalReserveFull } from "./recovery-developer-professional";
+import { developerProfessionalFocused } from "./focused-developer-professional";
 
 type Reserve = { full: readonly RecoveryItem[]; focused: readonly RecoveryItem[] };
 const banks: Record<TrackId, Reserve> = {
@@ -17,6 +19,7 @@ const banks: Record<TrackId, Reserve> = {
   "developer-foundations": { ...developerReserve, focused: developerFocused },
   "architect-foundations": { ...architectReserve, focused: architectFocused },
   "architect-professional": professionalReserve,
+  "developer-professional": { full: developerProfessionalReserveFull, focused: developerProfessionalFocused },
 };
 
 const alignment = {
@@ -29,7 +32,7 @@ export function recoveryBank(track: TrackId, version?: ExamVersion): { full: Pra
   const { full, focused } = banks[track];
   function forGuide(pool: readonly RecoveryItem[]) {
     return pool.flatMap(({ revised, ...entry }) => {
-      if (version === decemberVersion && track !== "architect-foundations") {
+      if (version === decemberVersion && hasDecemberGuide(track)) {
         const skill = revised ?? alignment[track][entry.objective];
         return skill ? [{ ...entry, objective: skill, skill }] : [];
       }

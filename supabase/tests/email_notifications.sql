@@ -55,10 +55,16 @@ insert into public.learner_progress (user_id, save_key, payload)
 values ('ce475000-0000-4000-8000-000000000071', 'certcity.practice.CCDV-F.2026-07.v1', '{"bad":"\u0000"}'),
   ('ce475000-0000-4000-8000-000000000071', 'certcity.practice.CCAO-F.readiness.v1', jsonb_build_object('capstones', jsonb_build_array(
     jsonb_build_object('trackId', 'associate-foundations', 'version', 'december-2026', 'stage', 'capstone',
-      'scenarioId', 'associate-willow-clinic-revised-v1', 'passed', true,
+      'scenarioId', 'associate-admissions-project-lab-v2', 'passed', true,
       'submittedAt', floor(extract(epoch from now() - interval '169 hours') * 1000)),
     jsonb_build_object('trackId', 'associate-foundations', 'version', 'july-2026', 'stage', 'capstone',
-      'scenarioId', 'associate-riverbend-reopening-v1', 'passed', false,
+      'scenarioId', 'associate-admissions-project-lab-v2', 'passed', false,
+      'submittedAt', floor(extract(epoch from now() - interval '169 hours') * 1000))
+  ))::text),
+  -- A pass of a retired practical no longer unlocks a 7-day review lab in the app, so it must not send a reminder.
+  ('ce475000-0000-4000-8000-000000000071', 'certcity.practice.CCDV-F.readiness.v1', jsonb_build_object('capstones', jsonb_build_array(
+    jsonb_build_object('trackId', 'developer-foundations', 'version', 'july-2026', 'stage', 'capstone',
+      'scenarioId', 'developer-spares-tool-loop-v1', 'passed', true,
       'submittedAt', floor(extract(epoch from now() - interval '169 hours') * 1000))
   ))::text);
 
@@ -81,6 +87,10 @@ declare
 begin
   if (select count(*) from certcity_private.notification_candidates(now())
       where user_id = 'ce475000-0000-4000-8000-000000000071' and recipient is not null) <> 3
+    or (select count(*) from certcity_private.notification_candidates(now())
+      where kind = 'academy_practical' and track_id = 'associate-foundations' and guide = 'december-2026') <> 1
+    or exists (select 1 from certcity_private.notification_candidates(now())
+      where kind = 'academy_practical' and track_id = 'developer-foundations')
     or (select count(*) from certcity_private.notification_candidates(now())
       where kind = 'account_signup' and signup_email = 'email-preference-one@example.invalid' and recipient is null) <> 1
     or exists (select 1 from certcity_private.notification_candidates(now())

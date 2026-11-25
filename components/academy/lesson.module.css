@@ -1,0 +1,59 @@
+.article { font-size: 16.5px; line-height: 1.65; color: var(--ink, #1f2a22); }
+.article > p { margin: 0 0 14px; }
+.article h2 { font-size: 17px; margin: 0 0 8px; }
+
+.takeaway { display: grid; gap: 4px; margin: 0 0 22px; padding: 14px 16px; border-radius: 12px; background: #eef4ea; border: 1px solid #cfdfc6; }
+.takeaway strong { font-size: var(--fs-2); font-weight: var(--fw-strong); color: #3d6b47; }
+
+.inlineCode, .terms code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .88em; padding: 1px 5px; border-radius: 5px; background: #f1ede4; border: 1px solid #e3dccd; overflow-wrap: anywhere; }
+
+.code { margin: 6px 0 18px; border-radius: 12px; overflow: hidden; border: 1px solid #2c3a31; background: #1d2621; }
+.code figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; font-size: 13px; color: #d7e4d6; background: #26322b; }
+.code figcaption small { font-family: "IBM Plex Mono", ui-monospace, monospace; opacity: .7; }
+.code pre { margin: 0; padding: 14px 14px 16px; overflow-x: auto; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13.5px; line-height: 1.55; color: #eef3ea; }
+.code pre:focus-visible { outline: 2px solid #9fd3a8; outline-offset: -2px; }
+
+.list { margin: 0 0 16px; padding-inline-start: 22px; }
+.list li + li { margin-top: 6px; }
+
+.tableWrap { margin: 4px 0 18px; overflow-x: auto; border: 1px solid var(--line, #e2dccf); border-radius: 12px; }
+.table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.45; }
+.table :is(th, td) { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line, #e2dccf); }
+.table thead th { background: #f6f2ea; font-size: 13px; }
+.table tbody tr:last-child :is(th, td) { border-bottom: 0; }
+.table tbody th { font-weight: 600; }
+
+.callout { display: grid; grid-template-columns: 20px 1fr; gap: 10px; margin: 6px 0 18px; padding: 12px 14px; border-radius: 12px; border: 1px solid; }
+.callout p { margin: 4px 0 0; }
+.callout[data-tone="exam"] { background: #eef3fb; border-color: #c9d7ee; color: #1f3350; }
+.callout[data-tone="pitfall"] { background: #fbf0e8; border-color: #ecd0bc; color: #5a2f14; }
+.callout[data-tone="tip"] { background: #f2f7ef; border-color: #cfe0c6; color: #23402a; }
+.callout svg { margin-top: 3px; }
+
+.terms, .sources { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line, #e2dccf); }
+.terms ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+/* A chip, not running text: a long term (an env var, a product name) is a glossary <button>, which sizes to the full row
+   and cannot wrap across lines, so an inline <code> would add its padding past the edge on phones. */
+.terms code { display: inline-block; max-width: 100%; box-sizing: border-box; }
+.sources ul { margin: 0; padding-inline-start: 20px; font-size: 15px; }
+
+.studyGrid { display: grid; gap: 14px; }
+.domain { padding: 16px 18px; border: 1px solid var(--line, #e2dccf); border-radius: 14px; background: #fffdf8; }
+.domain h2 { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 10px; font-size: 17px; }
+.domain h2 span { font-weight: 500; color: #6b6458; font-size: 14px; }
+.lessonList { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.lessonList a { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 10px; text-decoration: none; color: inherit; }
+.lessonList a:hover, .lessonList a:focus-visible { background: #f3efe5; }
+.lessonList small { color: #6b6458; white-space: nowrap; }
+.code-id, .lessonCode { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; color: #6b6458; }
+.studied { color: #2f6b3b; font-weight: 600; }
+
+.lessonNav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line, #e2dccf); }
+.lessonActions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 18px 0 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 14px; color: #6b6458; font-size: 14px; margin: 6px 0 18px; }
+
+@media (max-width: 560px) {
+  .article { font-size: 16px; }
+  .lessonList a { grid-template-columns: 40px 1fr; }
+  .lessonList small { grid-column: 2; }
+}

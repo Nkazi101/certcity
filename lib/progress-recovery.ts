@@ -14,7 +14,7 @@ type Backup = { schema: typeof schema; exportedAt: number; entries: Save[]; copi
 function validEntry(entry: unknown): entry is Save {
   if (!entry || typeof entry !== "object" || !("key" in entry) || !("value" in entry) ||
       typeof entry.key !== "string" || !isProgressKey(entry.key) || typeof entry.value !== "string" || new TextEncoder().encode(entry.value).length > maxBackupSize) return false;
-  if (entry.key === "certcity.city.active-assignment.v1") return /^(?:(?:associate|developer|architect)-foundations|architect-professional)$/.test(entry.value);
+  if (entry.key === "certcity.city.active-assignment.v1") return /^(?:(?:associate|developer|architect)-foundations|(?:architect|developer)-professional)$/.test(entry.value);
   try {
     const data = JSON.parse(entry.value);
     return !!data && typeof data === "object" && !Array.isArray(data);

@@ -1,0 +1,29 @@
+.control {
+  position: relative;
+}
+
+.control[data-on] {
+  background: #e2ecd3;
+  color: #1f4a37;
+}
+
+.badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px;
+  border-radius: 50%;
+  background: #fff6de;
+  color: #4b5d50;
+}
+
+.roomTools {
+  position: absolute;
+  right: 16px;
+  top: 76px;
+  z-index: 2;
+}
+
+@media (max-width: 700px) {
+  .roomTools { top: auto; right: 8px; bottom: 76px; }
+}

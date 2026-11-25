@@ -4,14 +4,22 @@ import type { ExamVersion } from "../december-blueprints";
 export type CapstoneStage = "capstone" | "transfer";
 export type CapstoneDraft = Record<string, string>;
 
+export const capstoneEditors = ["text", "notes", "json", "yaml", "markdown", "shell"] as const;
+export type CapstoneEditor = (typeof capstoneEditors)[number];
+export const capstoneDocumentFormats = ["json", "code"] as const;
+export type CapstoneDocumentFormat = (typeof capstoneDocumentFormats)[number];
+
 export type CapstoneField = {
   id: string;
   label: string;
   group?: string;
   instruction?: string;
   initial?: string;
-  editor?: "text" | "notes" | "json";
+  /** "json", "yaml", "markdown", and "shell" render as a monospace code editor with line numbers. */
+  editor?: CapstoneEditor;
   options?: readonly string[];
+  /** A worked example of the file format, with different values from the lab. Shown in an "Example format" disclosure. */
+  example?: string;
 };
 
 export type CapstoneCriterion = {
@@ -44,7 +52,7 @@ export type CapstoneDefinition = {
   role: string;
   brief: string;
   deliverable: string;
-  documents: readonly { id: string; title: string; text: string; format?: "json" }[];
+  documents: readonly { id: string; title: string; text: string; format?: CapstoneDocumentFormat }[];
   fields: readonly CapstoneField[];
   criteria: readonly CapstoneCriterion[];
   runs?: readonly { id: string; label: string }[];
@@ -92,6 +100,18 @@ export const capstoneFieldLimit = 4800;
 
 export function test(criterion: string, passed: boolean, ifPassed: string, ifFailed: string): CapstoneTest {
   return { criterion, passed, detail: passed ? ifPassed : ifFailed };
+}
+
+/** Passes when no problems were found. Each problem becomes one line of feedback (the UI renders lines as a list). */
+export function verdict(criterion: string, problems: readonly string[], ifPassed: string): CapstoneTest {
+  if (!problems.length) return { criterion, passed: true, detail: ifPassed };
+  let detail = "";
+  for (const problem of problems) {
+    const next = detail ? `${detail}\n${problem}` : problem;
+    if (next.length > 2300) return { criterion, passed: false, detail: `${detail}\n…and more. Fix these first, then run the checks again.` };
+    detail = next;
+  }
+  return { criterion, passed: false, detail };
 }
 
 export function words(value: string | undefined) {

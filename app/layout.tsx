@@ -8,6 +8,7 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 import "./certifications/academy.css";
 import { speedInsightsEnabled, webAnalyticsEnabled } from "../lib/practice-measurement";
+import { PrePaintScript } from "../components/pre-paint-script";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteOrigin),
@@ -26,7 +27,11 @@ export const viewport: Viewport = { themeColor: "#141B1F" };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    // The pre-paint script marks <html> (data-restoring, data-city-light) before hydration, so suppress the mismatch.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <PrePaintScript />
+      </head>
       <body><AccountProvider>{children}</AccountProvider>{(webAnalyticsEnabled || speedInsightsEnabled) && <SiteMeasurement />}</body>
     </html>
   );

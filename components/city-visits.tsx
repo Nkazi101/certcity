@@ -3,6 +3,7 @@ import type { ReactNode, RefObject } from "react";
 import { dispatchConversation, previewConversations } from "../lib/city-dialogue";
 import type { PlaceId } from "../lib/world";
 import { ConversationAction, ConversationFrame } from "./city-conversation";
+import { Glossed } from "./glossary/peek";
 
 type Dialog = RefObject<HTMLDialogElement | null>;
 
@@ -17,7 +18,7 @@ export function DispatchConversation({ dialog, onClose, onSystem, moduleProgress
   const next = dispatchConversation[beat + 1];
   return (
     <ConversationFrame dialog={dialog} title="The missing shipment" {...speaker} step={beat} onClose={onClose} moduleProgress={moduleProgress}>
-      <p className="conversation-line" role="status" tabIndex={-1}>{speaker.line}</p>
+      <p className="conversation-line" role="status" tabIndex={-1}><Glossed text={speaker.line} track="architect-foundations" /></p>
       <div className="conversation-actions">
         {beat > 0 && <ConversationAction onClick={() => setBeat(beat - 1)}>Back</ConversationAction>}
         {next ? <ConversationAction primary onClick={() => setBeat(beat + 1)}>{next.question}</ConversationAction> :
@@ -40,7 +41,7 @@ export function PlaceConversation({ dialog, place, onClose, library }: {
       <p className="conversation-line" role="status" tabIndex={-1}>{library?.complete
         ? asked ? "Here’s the south front from Olive Street. The date and photographer are on the label now, and visitors can look up the record for themselves."
           : "The reference desk is open. I put the documented photo on the steps so visitors can see where it was taken."
-        : asked ? authored?.evidence ?? place.example : authored?.greeting ?? place.activity}</p>
+        : <Glossed text={asked ? authored?.evidence ?? place.example : authored?.greeting ?? place.activity} />}</p>
       {asked && library && <figure className="archive-photo">
         <img src="/models/olive-corner/central-library-south-1986.webp" width={525} height={308}
           alt="Black-and-white photograph of Central Library from Olive Street, showing its broad staircase and three entrance arches." />

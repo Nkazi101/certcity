@@ -12,7 +12,7 @@ import { professionalChecks, professionalRetention } from "./professional-practi
 type Alternative = string | readonly [choice: string, rationale: string];
 
 export type Check = readonly [
-  objective: PracticeItem["objective"], setting: string, question: string, answer: string,
+  objective: PracticeItem["objective"], setting: string, question: string, answer: Alternative,
   explanation: string, alternative: Alternative, secondAlternative: Alternative, thirdAlternative: Alternative,
 ];
 
@@ -22,7 +22,8 @@ function bank(role: string, activities: readonly GuideActivity[], practice: read
     return checks.map(([objective, setting, question, answer, explanation, ...alternatives], index) => {
       const position = (index * 3 + Math.floor(index / 4)) % 4;
       const choices = alternatives.map((option) => typeof option === "string" ? [option, ""] as const : option);
-      const options = [...choices.slice(0, position), [answer, ""] as const, ...choices.slice(position)];
+      const keyed = typeof answer === "string" ? [answer, ""] as const : answer;
+      const options = [...choices.slice(0, position), keyed, ...choices.slice(position)];
       return item(`dec-practice-${role}-${stage}-${objective}`, objective, source.get(objective)!, setting, question,
         String.fromCharCode(97 + position), explanation, ...options);
     });

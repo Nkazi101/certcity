@@ -35,6 +35,9 @@ import { replayCasework } from "../lib/claude/casework";
 import { evidenceFingerprint } from "../lib/claude/evidence-snapshot";
 import { QuestionReport } from "./academy/question-report";
 
+import { ModuleProgressButton, useCertificationProgress } from "./certification-progress-hook";
+export { ModuleProgressButton, useCertificationProgress };
+
 export type MissionCertificationPage = "mission-debrief" | "mission-check" | "mission-followup";
 export type CertificationPage = "pathway" | "debrief" | CheckStage | "previous-first" | "previous-followup" |
   "browser-first" | "browser-followup" | MissionCertificationPage;
@@ -44,114 +47,9 @@ const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeS
 const dispatchPages = ["debrief", "first", "followup"] as const;
 const missionPages = ["mission-debrief", "mission-check", "mission-followup"] as const;
 
-export function useCertificationProgress(shiftComplete: boolean) {
-  const { ready, user } = useAccount();
-  const userId = user?.id;
-  const [progress, setProgress] = useState(emptyProgress);
-  const [sessionOnly, setSessionOnly] = useState(false);
-  const [study, setStudy] = useState<DispatchStudy | null>(null);
-  const [studyError, setStudyError] = useState<string | null>(null);
-  const [reloadStudy, setReloadStudy] = useState(0);
-  const latest = useRef(emptyProgress);
-
-  useEffect(() => {
-    if (!ready) return;
-    function restore() {
-      const stored = readCertification() ?? emptyProgress;
-      latest.current = stored;
-      setProgress(stored);
-      setSessionOnly(false);
-    }
-    restore();
-    return subscribeToProgress((key, local) => {
-      if (!local && (key === certificationKey || key === null)) restore();
-    });
-  }, [ready]);
-
-  useEffect(() => {
-    if (!ready || !userId || !shiftComplete) return;
-    const controller = new AbortController();
-    const restore = async () => {
-      const response = await dispatchStudyRequest<DispatchStudy>("status", undefined, undefined, controller.signal);
-      if (controller.signal.aborted) return;
-      setStudyError(response.error);
-      if (response.data) {
-        const incoming = response.data;
-        setStudy((current) => ({
-          ...incoming,
-          first: incoming.first ?? current?.first ?? null,
-          followup: incoming.followup ?? current?.followup ?? null,
-          dueAt: incoming.dueAt ?? current?.dueAt ?? null,
-        }));
-      }
-    };
-    void restore();
-    window.addEventListener("focus", restore);
-    return () => {
-      controller.abort();
-      window.removeEventListener("focus", restore);
-    };
-  }, [ready, userId, shiftComplete, reloadStudy]);
-
-  const recordResult = useCallback((stage: CheckStage, result: SkillAttempt) => {
-    setStudy((current) => current && {
-      ...current,
-      [stage]: result,
-      dueAt: stage === "first" ? followupAt(result) : current.dueAt,
-    });
-  }, []);
-
-  const startStudy = useCallback(async (stage: CheckStage, signal: AbortSignal) => {
-    const response = await dispatchStudyRequest<{ result?: SkillAttempt }>("start", stage, undefined, signal);
-    if (!signal.aborted && response.data?.result) recordResult(stage, response.data.result);
-    return response.error;
-  }, [recordResult]);
-
-  async function update(action: Parameters<typeof updateCertification>[1]) {
-    if (action.kind === "submit" && study?.eligible) {
-      const scope = progressScope();
-      const response = await dispatchStudyRequest<{ result: SkillAttempt }>("submit", action.stage, action.answers);
-      if (progressScope() !== scope) return "Your account changed. Try again.";
-      if (response.data?.result) recordResult(action.stage, response.data.result);
-      return response.error;
-    }
-    const { progress: updated, saved, error } = await updateCertification(latest.current, action);
-    if (!error) {
-      latest.current = updated;
-      setProgress(updated);
-      setSessionOnly(!saved);
-    }
-    return error;
-  }
-
-  const displayProgress = study?.eligible ? {
-    ...progress, first: study.first, followup: study.followup,
-  } : progress;
-  return {
-    progress: displayProgress, sessionOnly, update,
-    startStudy: study?.eligible ? startStudy : undefined,
-    studyPending: !!userId && shiftComplete && !study,
-    studyError,
-    retryStudy: () => setReloadStudy((current) => current + 1),
-    dueAt: study?.eligible ? study.dueAt : null,
-    committedDispatchCheck: study?.eligible ? study.first : undefined,
-    browserStudy: study?.eligible ? { first: progress.first, followup: progress.followup } : undefined,
-  };
-}
-
 function checkResult(stage: CheckStage, attempt: SkillAttempt) {
   const check = checkForAttempt(stage, attempt.checkId);
   return `${gradeAttempt(check, attempt)} of ${check.questions.length} correct`;
-}
-
-export function ModuleProgressButton({ completed, onOpen }: { completed: readonly boolean[]; onOpen: () => void }) {
-  const count = completed.filter(Boolean).length;
-  return <button className="button button-outline module-progress-button" type="button" aria-haspopup="dialog"
-    aria-label={`Module progress, ${count} of ${completed.length} steps`} onClick={onOpen}>
-    <GraduationCap size={17} aria-hidden="true" />
-    <span>Module progress</span>
-    <span className="module-progress-count" aria-hidden="true">{count}/{completed.length}</span>
-  </button>;
 }
 
 type ModuleStep = { title: string; description: string; action: string; open: () => void; scheduled?: boolean };
@@ -184,7 +82,7 @@ function ModulePathway({ title, intro, location, steps, completed, practice, gui
       {steps.map(({ title, description, action, open }, index) => (
         <li key={title} className="pathway-row" aria-current={index === next ? "step" : undefined}>
           <span className="pathway-icon" aria-hidden="true">{completed[index] ? <Check size={17} /> : index + 1}</span>
-          <div><h4>{title}</h4><p>{completed[index] && <strong>Complete · </strong>}{index === next && <strong>Suggested next · </strong>}{description}</p></div>
+          <div><h4>{title}</h4><p>{completed[index] && <strong>Done. </strong>}{index === next && <strong>Next: </strong>}{description}</p></div>
           <button className={`button ${index === next ? "button-primary" : "button-outline"}`} type="button" onClick={open}>
             {action} <ArrowRight size={15} aria-hidden="true" />
           </button>
@@ -193,7 +91,7 @@ function ModulePathway({ title, intro, location, steps, completed, practice, gui
     </ol>
     <div className="preparation-extra">
       <p><strong>Optional practice</strong> · {practice}</p>
-      <button className="button button-outline" type="button" onClick={onLens}><BookOpen size={16} aria-hidden="true" /> Open Exam Lens</button>
+      <button className="button button-outline" type="button" onClick={onLens}>Try an exam question on this</button>
     </div>
     {history}
     <div className="certification-sources">
@@ -215,12 +113,12 @@ function Pathway({ progress, browserStudy, completed, unlocked, onNavigate, onDi
   const [shiftComplete] = completed;
   const { first, followup } = progress;
   const steps: ModuleStep[] = [
-    { title: "Repair the City Dispatch lookup", description: shiftComplete ? "A repaired shift is saved." : "Fix false ‘order not found’ replies and save an improved shift.", action: shiftComplete ? "Revisit assignment" : "Start assignment", open: onDispatch },
+    { title: "Repair the City Dispatch lookup", description: shiftComplete ? "Your repaired lookup design is saved." : "Fix false ‘order not found’ replies and save an improved lookup design.", action: shiftComplete ? "Revisit mission" : "Start mission", open: onDispatch },
     { title: "Open the technical debrief", description: "Compare MCP responses and the recovery decisions they support.", action: "Read debrief", open: () => onNavigate("debrief") },
-    { title: "Take the exam-style check", description: first ? checkResult("first", first) : "A bike-share scenario with single- and multiple-response questions.", action: first ? "Review results" : "Start skill check", open: () => onNavigate("first") },
-    { title: "Return for the follow-up", description: followup ? checkResult("followup", followup) : unlocked ? "Apply the same skills in an arts center scenario."
+    { title: "Answer the practice questions", description: first ? checkResult("first", first) : "A bike-share scenario with single- and multiple-response questions.", action: first ? "Review results" : "Start practice questions", open: () => onNavigate("first") },
+    { title: "Come back for the 7-day review", description: followup ? checkResult("followup", followup) : unlocked ? "Apply the same skills in an arts center scenario."
       : first ? `Available ${dateFormat.format(followupAt(first))}.` : `Available ${followupDays} days after the first check.`,
-      action: followup ? "Review follow-up" : unlocked ? "Start follow-up" : "View follow-up", open: () => onNavigate("followup"), scheduled: !unlocked },
+      action: followup ? "See 7-day review results" : unlocked ? "Start 7-day review" : "View 7-day review", open: () => onNavigate("followup"), scheduled: !unlocked },
   ];
   return <ModulePathway title={architectFoundations.title}
     intro={<><strong>Task {architectFoundations.task}</strong> · {architectFoundations.objective}</>}
@@ -230,10 +128,10 @@ function Pathway({ progress, browserStudy, completed, unlocked, onNavigate, onDi
     guide={architectFoundations.guide} href="/certifications/architect-foundations" pathwayName="Architect Foundations" onLens={onLens}
     history={(progress.previousFirst || progress.previousFollowup || browserStudy?.first || browserStudy?.followup) && <details className="preparation-history">
       <summary>Earlier practice results</summary>
-      {progress.previousFirst && <button type="button" className="button button-text" onClick={() => onNavigate("previous-first")}>Original skill check · {checkResult("first", progress.previousFirst)}</button>}
-      {progress.previousFollowup && <button type="button" className="button button-text" onClick={() => onNavigate("previous-followup")}>Original follow-up · {checkResult("followup", progress.previousFollowup)}</button>}
-      {browserStudy?.first && <button type="button" className="button button-text" onClick={() => onNavigate("browser-first")}>Earlier skill check · {checkResult("first", browserStudy.first)}</button>}
-      {browserStudy?.followup && <button type="button" className="button button-text" onClick={() => onNavigate("browser-followup")}>Earlier follow-up · {checkResult("followup", browserStudy.followup)}</button>}
+      {progress.previousFirst && <button type="button" className="button button-text" onClick={() => onNavigate("previous-first")}>Original practice questions: {checkResult("first", progress.previousFirst)}</button>}
+      {progress.previousFollowup && <button type="button" className="button button-text" onClick={() => onNavigate("previous-followup")}>Original 7-day review: {checkResult("followup", progress.previousFollowup)}</button>}
+      {browserStudy?.first && <button type="button" className="button button-text" onClick={() => onNavigate("browser-first")}>Earlier practice questions: {checkResult("first", browserStudy.first)}</button>}
+      {browserStudy?.followup && <button type="button" className="button button-text" onClick={() => onNavigate("browser-followup")}>Earlier 7-day review: {checkResult("followup", browserStudy.followup)}</button>}
     </details>} />;
 }
 
@@ -255,22 +153,22 @@ function MissionPathway({ mission, record, completed, unlocked, onNavigate, onSt
   const followupQuestions = missionFollowupQuestions(mission, followup?.answers);
   const checkScore = first ? `${questions.filter((question) => isCorrect(question, first.answers[question.id])).length} of ${questions.length} correct` : null;
   const followupScore = followup ? `${followupQuestions.filter((question) => isCorrect(question, followup.answers[question.id])).length} of ${followupQuestions.length} correct` : null;
-  const room = missionExperiences[mission.id]?.room ?? "Assignment building";
-  const place = places.find(({ id }) => id === mission.place)?.name ?? "Assignment building";
+  const room = missionExperiences[mission.id]?.room ?? "Mission building";
+  const place = places.find(({ id }) => id === mission.place)?.name ?? "Mission building";
   const steps: ModuleStep[] = [
-    { title: mission.title, description: complete ? "An assignment outcome is saved." : `Meet the team and complete the work in ${place}.`, action: complete ? "Revisit assignment" : "Start assignment", open: onStart },
+    { title: mission.title, description: complete ? "A mission outcome is saved." : `Meet the team and complete the work in ${place}.`, action: complete ? "Revisit mission" : "Start mission", open: onStart },
     { title: "Open the technical debrief", description: "Review the system changes and the decisions they support.", action: "Read debrief", open: () => onNavigate("mission-debrief") },
-    { title: "Take the exam-style check", description: checkScore ?? `${questions.length} original ${questions.length === 1 ? "question" : "questions"} mapped to this assignment.`, action: first ? "Review results" : "Start skill check", open: () => onNavigate("mission-check") },
-    { title: "Return for the follow-up", description: followupScore ?? (unlocked ? `Apply the same skills to ${followupQuestions.length} held-out ${followupQuestions.length === 1 ? "question" : "questions"}.` : dueAt ? `Available ${dateFormat.format(dueAt)}.` : first ? "Retake the check to schedule the follow-up." : `Available ${followupDays} days after the first check.`),
-      action: followup ? "Review follow-up" : unlocked ? "Start follow-up" : "View follow-up", open: () => onNavigate("mission-followup"), scheduled: !unlocked },
+    { title: "Answer the practice questions", description: checkScore ?? `${questions.length} original ${questions.length === 1 ? "question" : "questions"} mapped to this mission.`, action: first ? "Review results" : "Start practice questions", open: () => onNavigate("mission-check") },
+    { title: "Come back for the 7-day review", description: followupScore ?? (unlocked ? `Apply the same skills to ${followupQuestions.length} held-out ${followupQuestions.length === 1 ? "question" : "questions"}.` : dueAt ? `Available ${dateFormat.format(dueAt)}.` : first ? "Retake the practice questions to schedule the 7-day review." : `Available ${followupDays} days after the first check.`),
+      action: followup ? "See 7-day review results" : unlocked ? "Start 7-day review" : "View 7-day review", open: () => onNavigate("mission-followup"), scheduled: !unlocked },
   ];
   const architectModule = track.id === "architect-foundations";
   return <ModulePathway title={architectModule ? architectFoundations.title : trackTitle(track)}
     intro={questions.map((question) => <span className="module-objective" key={question.objective}>
       <strong>{architectModule ? "Task" : "Objective"} {question.objective}</strong> · {objectiveTitle(track, question)}
     </span>)}
-    location={<><strong>{mission.title}</strong> · {place} · {room}</>} steps={steps} completed={completed}
-    practice={record?.practiced ? "Practice case attempted." : `Try the ${lensForMission(mission).scenario.toLowerCase()} case with feedback.`}
+    location={<><strong>{mission.title}</strong>, {room} at {place}</>} steps={steps} completed={completed}
+    practice={record?.practiced ? "Practice scenario attempted." : `Try the ${lensForMission(mission).scenario.toLowerCase()} scenario with feedback.`}
     guide={track.guide} href={trackHref(track)} pathwayName={`${track.role} ${track.level}`} onLens={onLens} />;
 }
 
@@ -327,8 +225,8 @@ function WorkDebrief({ missionId, work }: { missionId: string; work?: MissionRec
 function DebriefLesson({ missionId }: { missionId: string }) {
   const lesson = assignmentDebriefs[missionId];
   if (!lesson) return null;
-  return <section className="mission-debrief-lesson" aria-label="Assignment and technical lesson">
-    <section><h4>What happened in the assignment</h4><p>{lesson.observation}</p></section>
+  return <section className="mission-debrief-lesson" aria-label="Mission and technical lesson">
+    <section><h4>What happened on the mission</h4><p>{lesson.observation}</p></section>
     <section><h4>How the real system works</h4><p>{lesson.implementation}</p></section>
     <section><h4>What to look for on the exam</h4><p>{lesson.transfer}</p></section>
     <p className="mission-debrief-citation">References · <cite>{lesson.references.map((key) => sources[key][0]).join(" · ")}</cite></p>
@@ -356,7 +254,7 @@ function MissionDebrief({ mission, record, complete, currentGuide, onComplete, o
   return <>
     <div className="certification-intro">
       <p className="small-label">Technical debrief · {mission.title}</p>
-      <h3>What the assignment teaches</h3>
+      <h3>What the mission teaches</h3>
       {record?.work && <p>{assignmentOutcome(record.work)}</p>}
     </div>
     {!complete && <p>Your replay results will appear here once you save an outcome.</p>}
@@ -388,8 +286,8 @@ function MissionDebrief({ mission, record, complete, currentGuide, onComplete, o
       </section>)}
     </div>}
     <section className="mission-exam-map">
-      <h4>Objectives in this assignment’s exam-style check</h4>
-      <p>{examGuideLabel(track)} · The check asks you to apply these decisions to new cases.</p>
+      <h4>Objectives in this mission’s practice questions</h4>
+      <p>{examGuideLabel(track)} · The check asks you to apply these decisions to new scenarios.</p>
       <ul className="mission-mapping">{questions.map((question) => <li key={question.id}>
         <strong>{question.objective} · {objectiveTitle(track, question)}</strong>
         {exercise && <small>{exercise.objectives.includes(question.objective) ? "Practiced in the workbench" : "Related exam skill"}</small>}
@@ -399,7 +297,7 @@ function MissionDebrief({ mission, record, complete, currentGuide, onComplete, o
       </li>)}</ul>
       {companionCases.length > 0 && <section className="mission-guide-companions" aria-label="December objectives at this station">
         <h4>December practice in this room</h4>
-        <p>The current guide cases at this station apply these objectives.</p>
+        <p>The current guide scenarios at this station apply these objectives.</p>
         <ul>{companionCases.map(([id]) => {
           const [domain, position] = id.split(".").map(Number);
           return <li key={id}>{id} · {currentBlueprint.domains.find(({ id: value }) => value === domain)?.objectives[position - 1]}</li>;
@@ -651,8 +549,8 @@ export function CertificationDialog({ dialog, page: requestedPage, progress, shi
         <GraduationCap size={23} aria-hidden="true" />
         <h2 id="certification-title" tabIndex={-1} ref={heading}>
           {attempt ? (earlierStage ? "Earlier practice results" : "Skill check results") : page === "mission-debrief" ? "Technical debrief"
-            : page === "mission-check" ? "Exam-style skill check" : page === "mission-followup" ? "Seven-day follow-up"
-              : stage ? (stage === "first" ? "Exam-style skill check" : "Seven-day follow-up") : "Certification practice"}
+            : page === "mission-check" ? "Practice questions" : page === "mission-followup" ? "7-day review"
+              : stage ? (stage === "first" ? "Practice questions" : "7-day review") : "Certification practice"}
         </h2>
         <button className="icon-button" type="button" onClick={() => dialog.current?.close()} aria-label="Close certification practice">
           <X size={20} aria-hidden="true" />
@@ -706,9 +604,9 @@ export function CertificationDialog({ dialog, page: requestedPage, progress, shi
         </div>}
         {page === "mission-followup" && mission && unlocked && <MissionFollowup mission={mission} record={missionRecord} onChange={onMissionChange ?? (() => {})} />}
         {page === followupPage && !unlocked && <>
-          <p>{due !== null ? `Your follow-up is available ${dateFormat.format(due)}.` : `Follow-up practice is scheduled for ${followupDays} days after you submit a check.`}</p>
+          <p>{due !== null ? `Your 7-day review opens ${dateFormat.format(due)}.` : `The 7-day review opens ${followupDays} days after you submit the practice questions.`}</p>
           {due === null && <button className="button button-outline" type="button" onClick={() => onNavigate(checkPage)}>
-            {missionRecord?.check ? "Review exam check" : "Open exam check"} <ArrowRight size={16} aria-hidden="true" />
+            {missionRecord?.check ? "Review practice questions" : "Open practice questions"} <ArrowRight size={16} aria-hidden="true" />
           </button>}
         </>}
         {page && <p className="certification-muted certification-storage" role="status">

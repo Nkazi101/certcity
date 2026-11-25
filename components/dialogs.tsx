@@ -41,8 +41,8 @@ export function ExamLens({ dialog, onPractice, question }: { dialog: DialogRef; 
     <dialog className="game-dialog exam-dialog" ref={dialog} aria-labelledby="lens-title">
       <div className="dialog-header">
         <BookOpen size={22} aria-hidden="true" />
-        <h2 id="lens-title">Exam Lens</h2>
-        <button className="icon-button" type="button" onClick={() => dialog.current?.close()} aria-label="Close Exam Lens">
+        <h2 id="lens-title">Practice question</h2>
+        <button className="icon-button" type="button" onClick={() => dialog.current?.close()} aria-label="Close practice question">
           <X size={20} aria-hidden="true" />
         </button>
       </div>

@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import { trackHref, trackPracticeHref, tracks } from "../../lib/claude/blueprints";
+import { cityAssignmentHref, trackPracticeHref, tracks } from "../../lib/claude/blueprints";
+import { studyHref } from "../../lib/claude/lessons/paths";
 import type { TrackId } from "../../lib/claude/blueprints";
 import { progressKey, readinessKey } from "../../lib/claude/progress-keys";
 import { readProgressItem, subscribeToProgress } from "../../lib/progress-storage";
 import { useAccount } from "../account";
+import { useRestoreGate } from "../restore-gate";
+import styles from "./catalog.module.css";
 
 export function AcademyCatalogProgress({ trackId }: { trackId: TrackId }) {
   const { ready, user } = useAccount();
-  const [status, setStatus] = useState("");
+  const [hasPractice, setHasPractice] = useState(false);
+  const [checked, setChecked] = useState(false);
+  useRestoreGate("progress", checked);
   const track = tracks.find(({ id }) => id === trackId)!;
   useEffect(() => {
     if (!ready) return;
@@ -22,7 +27,10 @@ export function AcademyCatalogProgress({ trackId }: { trackId: TrackId }) {
       if (key !== null && key !== practiceKey && key !== studyKey) return;
       try {
         if (!readProgressItem(practiceKey) && !readProgressItem(studyKey)) {
-          setStatus("");
+          if (active) {
+            setHasPractice(false);
+            setChecked(true);
+          }
           return;
         }
         const [{ readProgress }, { readReadiness }] = await Promise.all([
@@ -32,9 +40,13 @@ export function AcademyCatalogProgress({ trackId }: { trackId: TrackId }) {
         if (!active) return;
         const progress = readProgress(track);
         const readiness = readReadiness(track);
-        setStatus(progress?.draft ? "Resume saved session" : progress?.attempts.length || readiness?.bridge || readiness?.capstones.length ? "Continue learning pathway" : "");
+        setHasPractice(Boolean(progress?.draft || progress?.attempts.length || readiness?.bridge || readiness?.capstones.length));
+        setChecked(true);
       } catch {
-        if (active) setStatus("");
+        if (active) {
+          setHasPractice(false);
+          setChecked(true);
+        }
       }
     };
     void refresh();
@@ -44,8 +56,17 @@ export function AcademyCatalogProgress({ trackId }: { trackId: TrackId }) {
       unsubscribe();
     };
   }, [track, ready, user]);
-  return <Link className="academy-catalog-action" href={status ? trackPracticeHref(track) : trackHref(track)} prefetch={false} aria-describedby={`pathway-${trackId}`}>
-    <span>{status || "Read study guide"}</span>
-    <ArrowRight size={16} aria-hidden="true" />
-  </Link>;
+  const context = `pathway-${trackId}`;
+  const city = cityAssignmentHref(track);
+  const practice = trackPracticeHref(track);
+  return <div className={styles.cardActions} data-restore="progress">
+    <Link className={styles.primaryAction} href={hasPractice ? practice : city} prefetch={false} aria-describedby={context}>
+      <span>{hasPractice ? "Continue practice" : "Start in the city"}</span>
+      <ArrowRight size={16} aria-hidden="true" />
+    </Link>
+    <div className={styles.secondaryActions}>
+      <Link href={studyHref(track)} prefetch={false} aria-describedby={context}>Study guide</Link>
+      <Link href={hasPractice ? city : practice} prefetch={false} aria-describedby={context}>{hasPractice ? "City missions" : "Practice exams"}</Link>
+    </div>
+  </div>;
 }

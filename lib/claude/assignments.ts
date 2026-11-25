@@ -34,10 +34,11 @@ const routes = [
   { id: "approval", name: "Dispute rule", evidence: "Staff must decide all disputes. Test replay includes 40 disputed tickets." },
 ] as const;
 
-export type CityAssignmentId = Exclude<TrackId, "architect-foundations">;
+/** Tracks whose first city case is a choice replay. CCAR-F starts at City Dispatch and CCDV-P with the stadium lab. */
+export type CityAssignmentId = Exclude<TrackId, "architect-foundations" | "developer-professional">;
 
 export function isCityAssignment(id: TrackId): id is CityAssignmentId {
-  return id !== "architect-foundations";
+  return id !== "architect-foundations" && id !== "developer-professional";
 }
 
 export const assignments: Record<CityAssignmentId, Assignment> = {

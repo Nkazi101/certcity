@@ -2,13 +2,17 @@
 
 import { Camera, Crosshair, MessageCircle, Minus, Plus, RotateCw } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { MissionRoomReplay, SceneKind, WorldControls } from "../lib/scene/renderer";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { MissionRoomReplay, SceneKind, SceneProgress, TimeMode, WorldAmbience, WorldControls } from "../lib/scene/renderer";
+import type { RoomReaction, StationOutcome } from "../lib/scene/room-reactions";
 import { defaultDistrict } from "../lib/scene/districts";
 import type { DistrictId } from "../lib/scene/districts";
 import type { MissionRoom } from "../lib/scene/mission-interior";
+import { cityLight, cityLightAttribute } from "../lib/city-light";
 import { recordClientHealth } from "../lib/client-health";
 import { useAccount } from "./account";
+import { readTimeMode, SoundButton, TimeOfDayButton } from "./world-ambience";
+import { soundscape } from "./soundscape";
 
 type Marker<T extends string> = {
   id: T;
@@ -26,6 +30,12 @@ type SceneProps<T extends string> = {
   districtVisit?: number;
   panelOpen?: boolean;
   staffHours?: number;
+  /** Depot only: the daily shift's customer line and callbacks. */
+  shiftScene?: RoomReaction | null;
+  /** Depot and the school: the waiting line, callback bench and held person (see lib/scene/room-reactions.ts). Overrides shiftScene. */
+  roomReaction?: RoomReaction | null;
+  /** ✓ / "!" over stations by id (depot: support, lookup, dispatch; rooms: work, evidence, stakeholder-0, stakeholder-1). */
+  stationOutcomes?: Readonly<Record<string, StationOutcome>>;
   assignmentComplete?: boolean;
   roomReplay?: { replay: MissionRoomReplay; preview: HTMLCanvasElement | null } | null;
   description: string;
@@ -35,10 +45,12 @@ type SceneProps<T extends string> = {
   onTalk?: (id: T) => void;
   conversationMarker?: { id: T; name: string; label: string };
   assignmentStatuses?: Partial<Record<T, string>>;
+  /** City only: saved learner progress to show on buildings and the skyline. */
+  progress?: SceneProgress;
 };
 
 export function WorldScene<T extends string>({
-  kind, missionRoom, district = defaultDistrict, districtVisit = 0, panelOpen = false, staffHours = 16, assignmentComplete = false, roomReplay, description, markers, selected, onSelect, onTalk, conversationMarker, assignmentStatuses,
+  kind, missionRoom, district = defaultDistrict, districtVisit = 0, panelOpen = false, staffHours = 16, shiftScene = null, roomReaction, stationOutcomes, assignmentComplete = false, roomReplay, description, markers, selected, onSelect, onTalk, conversationMarker, assignmentStatuses, progress,
 }: SceneProps<T>) {
   const { user } = useAccount();
   const host = useRef<HTMLDivElement>(null);
@@ -48,12 +60,20 @@ export function WorldScene<T extends string>({
   const districtRef = useRef(district);
   const districtVisitRef = useRef(districtVisit);
   const hoursRef = useRef(staffHours);
+  const reaction = roomReaction === undefined ? shiftScene : roomReaction;
+  const shiftRef = useRef(reaction);
+  const outcomesRef = useRef(stationOutcomes);
   const completionRef = useRef(assignmentComplete);
   const replayRef = useRef(roomReplay);
   const selectCallback = useRef(onSelect);
   const talkCallback = useRef(onTalk);
   const healthUser = useRef(user?.id);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const progressRef = useRef(progress);
+  const [timeMode, setTimeMode] = useState<TimeMode>("auto");
+  const timeModeRef = useRef<TimeMode>("auto");
+  const [ambience, setAmbience] = useState<WorldAmbience | null>(null);
+  const calmRef = useRef(false);
   const conversationId = conversationMarker?.id;
   const setConversationMarker = useCallback((element: HTMLButtonElement | null) => {
     if (!conversationId) return;
@@ -87,9 +107,77 @@ export function WorldScene<T extends string>({
   }, [panelOpen, assignmentStatuses, conversationId, state]);
 
   useEffect(() => {
+    progressRef.current = progress;
+    if (progress) world.current?.setProgress(progress);
+  }, [progress]);
+
+  // The pre-paint script picks the poster for full page loads; a client-side navigation into the city needs the same
+  // choice before its first paint (and dev Strict Mode resets <html> attributes on remount).
+  useLayoutEffect(() => {
+    if (kind === "city") document.documentElement.setAttribute(cityLightAttribute, cityLight());
+  }, [kind]);
+
+  useEffect(() => {
+    const stored = readTimeMode();
+    timeModeRef.current = stored;
+    setTimeMode(stored);
+  }, []);
+
+  useEffect(() => {
+    timeModeRef.current = timeMode;
+    world.current?.setTimeMode(timeMode);
+  }, [timeMode]);
+
+  // Calm mode: while a dialog or an assignment station panel is open, the world quiets down behind it.
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const calm = !!document.querySelector("dialog[open]") || (kind === "mission" && panelOpen);
+      calmRef.current = calm;
+      world.current?.setCalm(calm);
+    };
+    const queue = () => { if (!frame) frame = requestAnimationFrame(update); };
+    const observer = new MutationObserver(queue);
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["open"] });
+    update();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [kind, panelOpen, state]);
+
+  // Feed the soundscape and the time button from the scene's light.
+  useEffect(() => {
+    if (state !== "ready") return;
+    const poll = () => {
+      const current = world.current?.ambience();
+      if (!current) return;
+      soundscape.setMix({ scene: kind, district: current.district, night: current.night, calm: current.calm });
+      setAmbience((previous) => previous && previous.label === current.label && previous.mode === current.mode &&
+        Math.abs(previous.night - current.night) < .05 ? previous : current);
+    };
+    poll();
+    const timer = window.setInterval(poll, 1200);
+    return () => window.clearInterval(timer);
+  }, [state, kind, timeMode, district]);
+
+  useEffect(() => {
     hoursRef.current = staffHours;
     world.current?.setWorkload(staffHours);
   }, [staffHours]);
+
+  useEffect(() => {
+    shiftRef.current = reaction;
+    world.current?.setRoomReaction(reaction);
+  }, [reaction]);
+
+  useEffect(() => {
+    const previous = outcomesRef.current;
+    outcomesRef.current = stationOutcomes;
+    for (const id of Object.keys(previous ?? {})) if (!stationOutcomes || !(id in stationOutcomes)) world.current?.setStationOutcome(id, null);
+    for (const [id, outcome] of Object.entries(stationOutcomes ?? {})) world.current?.setStationOutcome(id, outcome);
+  }, [stationOutcomes]);
 
   useEffect(() => {
     completionRef.current = assignmentComplete;
@@ -124,14 +212,21 @@ export function WorldScene<T extends string>({
         if (!container || disposed) return;
         world.current = mountWorld(container, kind, districtRef.current, () => elements.current, (id, action) => {
           if (!elements.current.has(id)) return;
+          soundscape.tick(action === "talk" ? 1.2 : 1);
           if (action === "talk" && talkCallback.current) talkCallback.current(id as T);
           else selectCallback.current(id as T);
-        }, report, missionRoom);
+        }, report, missionRoom, () => report(true));
         world.current.select(selection.current);
+        world.current.setTimeMode(timeModeRef.current);
+        if (progressRef.current) world.current.setProgress(progressRef.current);
+        world.current.setCalm(calmRef.current);
         world.current.setWorkload(hoursRef.current);
+        world.current.setRoomReaction(shiftRef.current);
+        for (const [id, outcome] of Object.entries(outcomesRef.current ?? {})) world.current.setStationOutcome(id, outcome);
         world.current.setAssignmentComplete(completionRef.current);
         if (replayRef.current) world.current.setMissionReplay(replayRef.current.replay, replayRef.current.preview);
-        report(true);
+        // "ready" waits for the scene's first finished frame (see mountWorld), so the loading poster crossfades into a
+        // drawn city instead of cutting to an empty canvas.
       } catch (error) {
         console.error("Unable to start the CertCity 3D scene.", error);
         report(false);
@@ -152,7 +247,7 @@ export function WorldScene<T extends string>({
       {state !== "ready" && (
         <p className="world-message" role="status">
           {state === "loading" ? kind === "mission" ? `Opening ${missionRoom?.room ?? "the assignment"}…` : "Opening the neighborhood…"
-            : kind === "mission" ? "Use the station buttons below to open this assignment."
+            : kind === "mission" ? "Use the buttons below to talk to people, read the mission file or open the work station."
               : "The 3D view is unavailable. Use Places or Stations to continue."}
         </p>
       )}
@@ -170,9 +265,10 @@ export function WorldScene<T extends string>({
             data-assignment={assignment || undefined}
             type="button"
             aria-label={assignment && assignmentStatuses?.[id] ? `${name}, ${assignmentStatuses[id]!.toLowerCase()}` : name}
-            data-complete={assignmentStatuses?.[id] === "Assignment complete" || assignmentStatuses?.[id] === "Shift saved" || undefined}
+            data-complete={assignmentStatuses?.[id] === "Mission done" || assignmentStatuses?.[id] === "Shift saved" || undefined}
             aria-pressed={selected === id}
             onClick={() => {
+              soundscape.tick();
               world.current?.select(id, true);
               onSelect(id);
             }}
@@ -216,6 +312,10 @@ export function WorldScene<T extends string>({
             <button type="button" aria-label="Reset camera" title="Reset camera" onClick={() => world.current?.reset()}>
               <Crosshair size={17} aria-hidden="true" />
             </button>
+          </div>
+          <div className="zoom-tools" role="group" aria-label="Atmosphere">
+            {kind === "city" && <TimeOfDayButton mode={timeMode} label={ambience?.label ?? "Day"} onChange={setTimeMode} />}
+            <SoundButton />
           </div>
         </div>
       )}

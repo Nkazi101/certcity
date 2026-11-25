@@ -1,0 +1,150 @@
+/* The shift panel sits beside the 3D room (a bottom sheet on phones) so the line at the desk stays visible while you work. */
+.shift {
+  position: absolute;
+  z-index: 6;
+  top: 76px;
+  right: 16px;
+  max-height: calc(100% - 92px);
+  width: min(440px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: 0 18px 50px #1b26202e;
+  color: var(--ink);
+  overflow: hidden;
+}
+
+.header { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.header > div { flex: 1; min-width: 0; }
+.header h2 { margin: 2px 0 0; font-size: var(--fs-4); font-weight: var(--fw-heavy); letter-spacing: -.01em; }
+.header h2:focus { outline: none; }
+.kicker { margin: 0; font-size: var(--fs-1); font-weight: var(--fw-strong); color: var(--ink-muted); }
+.meter { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; padding: 5px 9px; border-radius: 999px; background: #f4efe3; font-size: var(--fs-1); font-weight: var(--fw-strong); white-space: nowrap; }
+.close { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin: -4px -6px 0 0; border: 0; border-radius: var(--r-md); background: transparent; color: var(--ink); cursor: pointer; }
+.close:hover { background: #f1ece1; }
+
+.body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px 18px; display: grid; align-content: start; gap: 14px; }
+
+.speaker { display: grid; grid-template-columns: 72px 1fr; gap: 12px; align-items: start; }
+.speaker strong { display: block; font-size: var(--fs-3); }
+.speaker small { display: block; color: var(--ink-muted); font-size: var(--fs-1); }
+.speaker p { margin: 6px 0 0; font-size: 15.5px; line-height: 1.5; }
+.portrait { width: 72px; height: 83px; border-radius: var(--r-md); object-fit: cover; object-position: top; background: #efe9dc; }
+.portraitSmall { width: 48px; height: 56px; border-radius: 8px; object-fit: cover; object-position: top; background: #efe9dc; }
+.streak { margin: 0; font-size: var(--fs-2); color: var(--ink-muted); }
+.actions { display: grid; gap: 10px; }
+.actions :global(.button) { justify-content: center; min-height: 44px; }
+.howto { margin: 0; font-size: var(--fs-2); color: var(--ink-muted); line-height: 1.45; }
+
+.customer { display: grid; gap: 8px; padding: 12px 14px; border-radius: var(--r-md); background: #f6f2e8; border: 1px solid var(--line); }
+.customer p { margin: 0; font-size: 15.5px; line-height: 1.45; }
+.customerHead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.returning { padding: 2px 8px; border-radius: 999px; background: #fde7c9; color: #6b3d0c; font-size: var(--fs-1); font-weight: var(--fw-strong); }
+.orders { display: flex; gap: 6px; }
+.orders code, .parcelId, .slot small, .question code, .explain code { font-family: var(--mono); font-size: 13px; }
+.orders code { padding: 2px 6px; border-radius: 6px; background: #fff; border: 1px solid var(--line); }
+.customer :global(.button) { justify-self: start; min-height: 44px; }
+
+.parcels { display: grid; gap: 8px; }
+.parcel {
+  display: grid; gap: 6px; padding: 10px 12px; text-align: left; cursor: grab; touch-action: none;
+  border: 2px solid #c9b48a; border-radius: var(--r-md);
+  background: repeating-linear-gradient(135deg, #f3e2bd 0 10px, #efdcb3 10px 20px);
+  color: var(--ink); font: inherit;
+  animation: parcel-in .35s ease-out;
+}
+.parcel[aria-pressed="true"] { border-color: var(--green); box-shadow: 0 0 0 3px #2a5b4633; }
+.parcel[data-dragging] { cursor: grabbing; box-shadow: 0 14px 30px #1b262040; transform: rotate(-2deg); }
+.parcel:disabled { cursor: default; opacity: .85; }
+.parcel dl { display: grid; gap: 2px; margin: 0; font-family: var(--mono); font-size: 13px; }
+.parcel dl div { display: flex; gap: 8px; }
+.parcel dt { color: #6b5a3a; min-width: 98px; }
+.parcel dd { margin: 0; font-weight: var(--fw-strong); overflow-wrap: anywhere; }
+.parcelId { color: #6b5a3a; }
+.placed { font-size: var(--fs-1); font-weight: var(--fw-strong); color: var(--green); }
+@keyframes parcel-in { from { transform: translateY(-10px) scale(.97); } }
+
+.chutes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.chute, .slot {
+  display: grid; gap: 2px; min-height: 58px; padding: 9px 10px; text-align: left; cursor: pointer;
+  border: 1px solid #cfd8cc; border-radius: var(--r-md); background: #fff; color: var(--ink); font: inherit;
+}
+.chute strong, .slot strong { font-size: var(--fs-2); }
+.chute small, .slot small { font-size: var(--fs-1); color: var(--ink-muted); line-height: 1.3; }
+.chute:hover, .chute:focus-visible, .slot:hover:not(:disabled) { border-color: var(--green); background: #f1f7ef; }
+.slots { display: grid; gap: 8px; }
+.slot:disabled { opacity: .55; cursor: default; }
+
+.outcome { display: grid; gap: 8px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid; animation: parcel-in .25s ease-out; }
+.outcome[data-correct="true"] { background: #eef6ec; border-color: #bfd8bb; }
+.outcome[data-correct="false"] { background: #fbf0e8; border-color: #ecd0bc; }
+.outcome :global(.button) { justify-self: start; min-height: 44px; }
+.outcomeHead { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-weight: var(--fw-strong); line-height: 1.4; }
+.outcomeHead svg { flex: none; margin-top: 2px; }
+.reaction { margin: 0; font-size: var(--fs-2); color: var(--ink-muted); font-style: italic; }
+.cost { margin: 0; font-size: var(--fs-2); font-weight: var(--fw-strong); color: #8a3d0f; }
+.why { display: grid; grid-template-columns: 48px 1fr; gap: 10px; padding: 10px; border-radius: var(--r-md); background: #fff; border: 1px solid var(--line); }
+.why p { margin: 4px 0 0; font-size: var(--fs-2); line-height: 1.45; }
+.term { color: var(--ink-muted); }
+.retrying { margin: 0; font-weight: var(--fw-strong); color: var(--green); }
+
+.question { margin: 0; padding: 0; border: 0; display: grid; gap: 8px; }
+.question legend { margin-bottom: 8px; font-size: 15.5px; line-height: 1.5; font-weight: var(--fw-strong); }
+.question code, .explain code { padding: 0 4px; border-radius: 4px; background: #f1ede4; }
+.option { display: grid; grid-template-columns: 20px 1fr; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: #fff; cursor: pointer; font-size: 14.5px; line-height: 1.45; }
+.option small { display: block; margin-top: 6px; color: var(--ink-muted); font-size: 13px; }
+.option[data-state="key"] { border-color: #8fc08a; background: #eef6ec; }
+.option[data-state="wrong"] { border-color: #e1b394; background: #fbf0e8; }
+.explain { margin: 0; padding: 10px 12px; border-left: 3px solid var(--green); background: #f4f7f1; font-size: var(--fs-2); line-height: 1.5; }
+
+.summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.summary div { display: flex; flex-direction: column-reverse; gap: 2px; padding: 10px; border-radius: var(--r-md); background: #f4f0e6; }
+.summary dt { font-size: var(--fs-1); color: var(--ink-muted); }
+.summary dd { margin: 0; font-size: var(--fs-4); font-weight: var(--fw-heavy); }
+.tomorrow { margin: 0; font-size: 15px; line-height: 1.5; }
+
+@media (max-width: 700px) {
+  .shift { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 62vh; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .header { padding: 10px 14px 8px; }
+  .header h2 { font-size: var(--fs-3); }
+  .body { padding: 10px 14px max(14px, env(safe-area-inset-bottom)); gap: 10px; }
+  .customer { padding: 10px 12px; gap: 6px; }
+  .chute, .slot { min-height: 48px; padding: 7px 9px; }
+  .chute small { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parcel, .outcome { animation: none; }
+}
+
+/* Parcels are buttons, so their field names can't hold definitions; this line defines them at a glance instead. */
+.fieldGuide { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: -4px 0 0; font-size: var(--fs-1); color: var(--ink-muted); }
+.fieldGuide > span:not(:first-child) { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+
+/* Speakers without a rendered portrait (e.g. Felicia Grant) get their initials. */
+.initials { display: grid; place-items: center; color: var(--ink); font-weight: var(--fw-heavy); font-size: var(--fs-3); }
+.portraitSmall.initials { font-size: var(--fs-2); }
+.note { margin: 0; padding: 8px 10px; border-radius: var(--r-md); background: #fdf3df; font-size: var(--fs-2); line-height: 1.45; }
+
+/* Front office: the papers on the desk and the draft sentence. */
+.papers { display: grid; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; }
+.paper { display: grid; gap: 2px; padding: 7px 10px; border-radius: 8px; background: #fff; border: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
+.paper[data-signed="false"] { background: #f7f4ee; border-style: dashed; }
+.paperHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 8px; font-size: var(--fs-1); font-weight: var(--fw-strong); color: var(--ink-muted); }
+.signed { color: var(--green); }
+.unsigned { color: #8a3d0f; }
+.draftTo { font-size: var(--fs-1); font-weight: var(--fw-strong); color: #6b5a3a; }
+.draftText { margin: 0; font-size: 15.5px; line-height: 1.4; font-weight: var(--fw-strong); }
+
+/* While a room's shift is open, its station markers would sit on top of the line and the bench. */
+:global(.game-world):has(.shift) :global(.world-scene[data-scene="mission"] .map-marker) { visibility: hidden; }
+/* Same room-sliding as the depot (globals.css): keep the desk, line and bench clear of the panel or the sheet. */
+:global(.game-world):has(.shift) :global(.world-scene[data-scene="mission"]) { right: auto; width: calc(100% + min(230px, 24vw)); transform: translateX(calc(-1 * min(230px, 24vw))); transition: transform .45s ease; }
+@media (max-width: 700px) {
+  :global(.game-world):has(.shift) :global(.world-scene[data-scene="mission"]) { right: 0; width: auto; bottom: auto; height: calc(100% + 52vh); transform: translateY(-52vh); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :global(.game-world):has(.shift) :global(.world-scene[data-scene="mission"]) { transition: none; }
+}

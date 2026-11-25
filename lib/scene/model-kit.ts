@@ -67,6 +67,21 @@ function surfaceTexture(kind: Surface) {
   return texture;
 }
 
+function paintSign(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, palette: [string, string]) {
+  ctx.fillStyle = palette[0];
+  ctx.fillRect(x, y, 512, 128);
+  ctx.strokeStyle = palette[1];
+  ctx.globalAlpha = .47;
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x + 10, y + 10, 492, 108);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = palette[1];
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.font = "700 63px system-ui";
+  ctx.fillText(text, x + 256, y + 62, 458);
+}
+
 export class ModelKit {
   private readonly materials = new Map<string, Material>();
   private readonly textures = new Map<string, THREE.Texture>();
@@ -77,13 +92,24 @@ export class ModelKit {
   private readonly ball: THREE.BufferGeometry;
   private readonly leaves: THREE.BufferGeometry;
   private readonly cityBatches?: CityBatches;
+  private readonly actorBatches: CityBatches;
+  private readonly shadowAnchors: THREE.Object3D[] = [];
+  private shadowLayer!: THREE.InstancedMesh;
   private readonly pole = this.geometry(new THREE.CylinderGeometry(.42, .5, 1, 12));
   private readonly round = this.geometry(new THREE.CylinderGeometry(.5, .5, 1, 20));
   private readonly panel = this.geometry(new THREE.PlaneGeometry(1, 1));
   private readonly gable = this.geometry(this.gableGeometry());
 
+  /**
+   * Phone and low-power tier, set by the renderer before the scene is built. Scene code reads it to skip small props,
+   * thin out crowds and keep cheap stand-ins instead of multi-material models, keeping draw calls low.
+   */
+  lean = false;
+
   constructor(readonly city = false) {
     this.cityBatches = city ? new CityBatches() : undefined;
+    this.actorBatches = this.cityBatches ?? new CityBatches();
+    this.shadowLayer = this.createShadowLayer(256);
     this.beveledBox = this.geometry(new RoundedBoxGeometry(1, 1, 1, city ? 1 : 2, city ? .065 : .075));
     this.ball = this.geometry(new THREE.SphereGeometry(.5, city ? 8 : 12, city ? 6 : 9));
     this.leaves = this.geometry(canopyGeometry(city));
@@ -102,6 +128,11 @@ export class ModelKit {
       this.materials.set(key, material);
     }
     return material;
+  }
+
+  /** The shared unit sphere, for instanced props that should match kit.sphere(). */
+  get ballGeometry() {
+    return this.ball;
   }
 
   geometry<T extends THREE.BufferGeometry>(geometry: T) {
@@ -152,7 +183,7 @@ export class ModelKit {
     return plane;
   }
 
-  contactShadow(parent: THREE.Object3D, x: number, z: number, width: number, depth: number, y = .024) {
+  private contactShadowMaterial() {
     let material = this.materials.get("contact-shadow");
     if (!material) {
       const canvas = document.createElement("canvas");
@@ -170,6 +201,11 @@ export class ModelKit {
       material = new THREE.MeshStandardMaterial({ map, transparent: true, depthWrite: false, roughness: 1 });
       this.materials.set("contact-shadow", material);
     }
+    return material;
+  }
+
+  contactShadow(parent: THREE.Object3D, x: number, z: number, width: number, depth: number, y = .024) {
+    const material = this.contactShadowMaterial();
     const shadow = this.mesh(parent, this.panel, material, [x, y, z], [width, depth, 1]);
     shadow.rotation.x = -Math.PI / 2;
     shadow.castShadow = false;
@@ -189,6 +225,7 @@ export class ModelKit {
     }
     const foliage = this.mesh(parent, this.leaves, material, position, size);
     foliage.rotation.y = (position[0] * 1.4 + position[2] * 2) % Math.PI;
+    foliage.userData.sway = 1;
     return foliage;
   }
 
@@ -223,32 +260,27 @@ export class ModelKit {
     const trim = this.material("#efdbb7");
     const frame = this.material("#4e6b64");
     this.box(window, [0, 0, .025], [width + .15, height + .14, .105], trim);
-    this.box(window, [0, 0, .085], [width, height, .045], this.material(warm ? "#e9b875" : "#69999c"));
+    this.box(window, [0, 0, .085], [width, height, .045], this.material(warm ? "#e9b875" : "#69999c")).userData.glow = warm ? 1.15 : 1;
     this.box(window, [0, 0, .117], [width, .045, .032], frame);
     this.box(window, [0, 0, .117], [.043, height, .032], frame);
     this.box(window, [0, -height / 2 - .083, .119], [width + .23, .105, .25], trim);
   }
 
   sign(parent: THREE.Object3D, text: string, position: Position, width: number, palette: [string, string]) {
+    if (this.city) {
+      // City signs share atlas pages, so every sign on a page batches into the same draw.
+      const { material, geometry } = this.signSlot(text, palette);
+      const sign = this.mesh(parent, geometry, material, position, [width, width / 4, 1]);
+      sign.castShadow = false;
+      return;
+    }
     const key = `sign|${text}|${palette.join("|")}`;
     let material = this.materials.get(key);
     if (!material) {
       const canvas = document.createElement("canvas");
       canvas.width = 512;
       canvas.height = 128;
-      const ctx = canvas.getContext("2d")!;
-      ctx.fillStyle = palette[0];
-      ctx.fillRect(0, 0, 512, 128);
-      ctx.strokeStyle = palette[1];
-      ctx.globalAlpha = .47;
-      ctx.lineWidth = 4;
-      ctx.strokeRect(10, 10, 492, 108);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = palette[1];
-      ctx.textBaseline = "middle";
-      ctx.textAlign = "center";
-      ctx.font = "700 63px system-ui";
-      ctx.fillText(text, 256, 62, 458);
+      paintSign(canvas.getContext("2d")!, 0, 0, text, palette);
       const map = new THREE.CanvasTexture(canvas);
       map.colorSpace = THREE.SRGBColorSpace;
       this.textures.set(key, map);
@@ -257,6 +289,48 @@ export class ModelKit {
     }
     const sign = this.mesh(parent, this.panel, material, position, [width, width / 4, 1]);
     sign.castShadow = false;
+  }
+
+  private readonly signSlots = new Map<string, { material: Material; geometry: THREE.BufferGeometry }>();
+  private signPage?: { ctx: CanvasRenderingContext2D; map: THREE.CanvasTexture; material: Material; used: number };
+
+  /** A 512x128 slot on a shared sign page, padded with the sign's own background so mipmaps never bleed neighbours. */
+  private signSlot(text: string, palette: [string, string]) {
+    const key = `sign|${text}|${palette.join("|")}`;
+    let slot = this.signSlots.get(key);
+    if (slot) return slot;
+    const columns = 2, rows = 8, gutter = 16;
+    const slotWidth = 512 + gutter * 2, slotHeight = 128 + gutter * 2;
+    const pageWidth = columns * slotWidth, pageHeight = rows * slotHeight;
+    if (!this.signPage || this.signPage.used === columns * rows) {
+      const canvas = document.createElement("canvas");
+      canvas.width = pageWidth;
+      canvas.height = pageHeight;
+      const map = new THREE.CanvasTexture(canvas);
+      map.colorSpace = THREE.SRGBColorSpace;
+      const pageKey = `sign-page|${this.signSlots.size}`;
+      this.textures.set(pageKey, map);
+      const material = new THREE.MeshStandardMaterial({ map, roughness: .88 });
+      this.materials.set(pageKey, material);
+      this.signPage = { ctx: canvas.getContext("2d")!, map, material, used: 0 };
+    }
+    const page = this.signPage;
+    const index = page.used++;
+    const x = (index % columns) * slotWidth, y = Math.floor(index / columns) * slotHeight;
+    page.ctx.fillStyle = palette[0];
+    page.ctx.fillRect(x, y, slotWidth, slotHeight);
+    paintSign(page.ctx, x + gutter, y + gutter, text, palette);
+    page.map.needsUpdate = true;
+    const geometry = this.geometry(this.panel.clone());
+    const uv = geometry.getAttribute("uv");
+    const left = (x + gutter) / pageWidth, right = (x + gutter + 512) / pageWidth;
+    const top = 1 - (y + gutter) / pageHeight, bottom = 1 - (y + gutter + 128) / pageHeight;
+    for (let i = 0; i < uv.count; i++) {
+      uv.setXY(i, left + uv.getX(i) * (right - left), bottom + uv.getY(i) * (top - bottom));
+    }
+    slot = { material: page.material, geometry };
+    this.signSlots.set(key, slot);
+    return slot;
   }
 
   tree(parent: THREE.Object3D, x: number, z: number, size: number, seed: number) {
@@ -294,21 +368,63 @@ export class ModelKit {
     else this.mergeMeshes(group, true);
   }
 
-  batchActor(group: THREE.Group, joints?: readonly THREE.Group[]) {
-    this.cityBatches?.merge(group, false, joints);
+  get lampPools(): readonly THREE.Vector3[] {
+    return this.cityBatches?.lampPools ?? [];
   }
 
+  /** Merge an actor into one (skinned, when it has joints) mesh per material. Rooms and the city share this path. */
+  batchActor(group: THREE.Group, joints?: readonly THREE.Group[]) {
+    this.actorBatches.merge(group, false, joints);
+  }
+
+  /**
+   * City actors keep an invisible anchor where their contact shadow belongs; one instanced layer draws them all.
+   * The renderer adds actorShadowLayer to the scene and calls syncActorShadows after world matrices update.
+   */
   actorShadow(parent: THREE.Object3D, width: number, depth: number) {
-    if (this.city) {
-      const shadow = this.contactShadow(parent, 0, 0, width, depth, .008);
-      shadow.name = "Actor contact shadow";
+    if (!this.city) return;
+    const anchor = new THREE.Object3D();
+    anchor.name = "Actor contact shadow";
+    anchor.position.set(0, .008, 0);
+    anchor.rotation.x = -Math.PI / 2;
+    anchor.scale.set(width, depth, 1);
+    parent.add(anchor);
+    this.shadowAnchors.push(anchor);
+    if (this.shadowAnchors.length > this.shadowLayer.instanceMatrix.count) {
+      const previous = this.shadowLayer;
+      this.shadowLayer = this.createShadowLayer(previous.instanceMatrix.count * 2);
+      previous.parent?.add(this.shadowLayer);
+      previous.removeFromParent();
+      previous.dispose();
     }
   }
 
-  batchJoints(group: THREE.Group) {
-    const joints: THREE.Group[] = [];
-    group.traverse((object) => { if (object instanceof THREE.Group) joints.push(object); });
-    for (const joint of joints) this.mergeMeshes(joint, false);
+  get actorShadowLayer() {
+    return this.shadowLayer;
+  }
+
+  syncActorShadows(scene: THREE.Object3D) {
+    this.cityBatches?.syncVisibility(scene);
+    const layer = this.shadowLayer;
+    let count = 0;
+    for (const anchor of this.shadowAnchors) {
+      let node: THREE.Object3D | null = anchor;
+      while (node && node !== scene && node.visible) node = node.parent;
+      if (node !== scene) continue;
+      layer.setMatrixAt(count++, anchor.matrixWorld);
+    }
+    layer.count = count;
+    layer.instanceMatrix.needsUpdate = true;
+  }
+
+  private createShadowLayer(capacity: number) {
+    const layer = new THREE.InstancedMesh(this.panel, this.contactShadowMaterial(), capacity);
+    layer.name = "Actor contact shadows";
+    layer.count = 0;
+    layer.frustumCulled = false;
+    layer.castShadow = false;
+    layer.receiveShadow = true;
+    return layer;
   }
 
   private mergeMeshes(group: THREE.Group, recursive: boolean) {
@@ -351,6 +467,8 @@ export class ModelKit {
   }
 
   dispose() {
+    this.shadowLayer.dispose();
+    if (this.actorBatches !== this.cityBatches) this.actorBatches.dispose();
     this.cityBatches?.dispose();
     this.geometries.forEach((geometry) => geometry.dispose());
     this.materials.forEach((material) => material.dispose());

@@ -62,10 +62,8 @@ export function makePerson(kit: ModelKit, parent: THREE.Object3D, colors: [strin
     arms.push(arm);
   }
 
-  if (kit.city) {
-    kit.actorShadow(person, .98, .63);
-    kit.batchActor(person, [person, chest, head, ...arms, ...forearms, ...legs, ...knees]);
-  } else if (detailed) kit.batchJoints(person);
+  kit.actorShadow(person, .98, .63);
+  kit.batchActor(person, [person, chest, head, ...arms, ...forearms, ...legs, ...knees]);
 
   return {
     person,
@@ -132,14 +130,14 @@ export function makeVehicle(kit: ModelKit, parent: THREE.Object3D, color: string
     kit.box(vehicle, [x, .56, length / 2 + .014], [.25, .14, .055], kit.material("#f9e8b1"), true);
     kit.box(vehicle, [x, .55, -length / 2 - .012], [.19, .12, .04], kit.material("#b54a3c"), true);
   }
-  if (kit.city) {
-    kit.batchActor(vehicle);
-    kit.actorShadow(vehicle, 1.76, length * 1.05);
-  }
+  kit.batchActor(vehicle);
+  kit.actorShadow(vehicle, 1.76, length * 1.05);
   return vehicle;
 }
 
 export function rollingHubs(kit: ModelKit, car: THREE.Object3D, van = false) {
+  // Spinning hubs are a close-up detail; the lean city tier keeps the model's own wheels.
+  if (kit.city && kit.lean) return (_travel: number, _steering: number) => {};
   const wheels = kit.group(car, [0, 0, 0]);
   wheels.name = "Animated hubs";
   const steel = kit.material("#aebdc2");
@@ -162,7 +160,14 @@ export function rollingHubs(kit: ModelKit, car: THREE.Object3D, van = false) {
       if (z > 0) front.push(knuckle);
     }
   }
-  wheels.traverse((object) => { if (object instanceof THREE.Mesh) object.castShadow = false; });
+  const knuckles = wheels.children.filter((child): child is THREE.Group => child instanceof THREE.Group);
+  // One skinned draw per wheel material instead of 28 meshes per car; the knuckles and hubs become joints.
+  kit.batchActor(wheels, [wheels, ...knuckles, ...hubs]);
+  wheels.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    object.castShadow = false;
+    if (object instanceof THREE.SkinnedMesh) object.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, .26, .03), 1.35);
+  });
   let rotation = 0;
   return (travel: number, steering: number) => {
     rotation += travel / (.244 * car.scale.x);

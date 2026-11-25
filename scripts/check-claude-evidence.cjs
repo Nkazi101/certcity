@@ -47,7 +47,10 @@ for (const track of tracks) {
       verifiedForms++;
     }
   }
-  assert.ok(bytes < 524_288, `${track.code} unique authored form snapshots exceed storage bound`);
+  // Exam-realistic items (60-110 word stems, a rationale for every option) are about 3x the original size.
+  // A learner who sits every form on every track stores roughly 2.6-3.3 MB packed, inside the ~5 MB
+  // browser storage budget. Keep the original and retest snapshots for both guides under 1 MiB per track.
+  assert.ok(bytes < 1_048_576, `${track.code} unique authored form snapshots exceed storage bound`);
 }
 
 const firstTrack = tracks[0];
@@ -105,9 +108,9 @@ const archiveSizes = tracks.map((track) => {
   assert.ok(packed < raw, track.code);
   return { track: track.code, raw, packed };
 });
-const originallyOversize = archiveSizes.filter(({ raw }) => raw > 524_288);
-assert.ok(originallyOversize.length > 0, "current archives exercise the account row limit");
-assert.ok(originallyOversize.every(({ packed }) => packed <= 524_288), JSON.stringify(archiveSizes));
+// Every form and reassessment on a track must still fit one account save row after packing.
+const { maxProgressSaveBytes } = require("../lib/progress-merge.ts");
+assert.ok(archiveSizes.every(({ packed }) => packed <= maxProgressSaveBytes * 0.75), JSON.stringify(archiveSizes));
 
 for (const [track, version, stage, draft] of solved) {
   const definition = getCapstoneDefinition(track, version, stage);

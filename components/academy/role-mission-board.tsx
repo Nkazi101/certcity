@@ -2,7 +2,7 @@ import {
   Activity, Archive, ArrowRight, BadgeCheck, BookOpen, Braces, BriefcaseBusiness,
   Check, ClipboardCheck, ClipboardList, Clock3, Code2, Database, FileCheck2, FileClock, FileSearch,
   FileText, GitBranch, GitPullRequest, Hand, LockKeyhole, Mail, MessageSquareText, Network, Package,
-  Play, Search, ShieldCheck, SlidersHorizontal, Sparkles, Table2, Terminal, Timer, Truck, Users,
+  Play, Search, ShieldCheck, SlidersHorizontal, Table2, Terminal, Timer, Truck, Users,
   Workflow, Wrench, X,
 } from "lucide-react";
 import type { Mission } from "../../lib/claude/missions";
@@ -11,12 +11,13 @@ import { MissionMechanic } from "./role-mission-mechanic";
 type Workbench = Extract<Mission, { kind: "workbench" }>;
 type Props = { mission: Workbench; position: number; selected: number[]; select: (indices: number[]) => void };
 
-function Panel({ icon: Icon, label, title, children }: { icon: typeof FileText; label: string; title: string; children?: React.ReactNode }) {
-  return <section className="role-scene-panel"><header><Icon size={18} aria-hidden="true" /><div><small>{label}</small><strong>{title}</strong></div></header>{children && <div className="role-scene-body">{children}</div>}</section>;
+// Panels name the object on the desk. Titles stay neutral so they don't give away the decision.
+function Panel({ label, title, children }: { icon: typeof FileText; label: string; title: string; children?: React.ReactNode }) {
+  return <section className="role-scene-panel"><header><div>{label.toLowerCase() !== title.toLowerCase() && <small>{label}</small>}<strong>{title}</strong></div></header>{children && <div className="role-scene-body">{children}</div>}</section>;
 }
 
 function OrderlySteps({ items }: { items: string[] }) {
-  return <div className="role-steps">{items.map((item, index) => <div key={item}><span>{String(index + 1).padStart(2, "0")}</span><strong>{item}</strong>{index < items.length - 1 && <ArrowRight size={15} aria-hidden="true" />}</div>)}</div>;
+  return <div className="role-steps">{items.map((item, index) => <div key={item}><span>{index + 1}</span><strong>{item}</strong>{index < items.length - 1 && <ArrowRight size={15} aria-hidden="true" />}</div>)}</div>;
 }
 
 function DataRow({ title, value, state }: { title: string; value: string; state?: "good" | "warn" | "bad" }) {
@@ -44,7 +45,7 @@ export function RoleMissionBoard({ mission, position, selected, select }: Props)
         </Panel>
         <Panel icon={Activity} label="Pilot record" title="Compare under the same service rule"><div className="role-metric-pair"><b>Completeness <span>same referral rule</span></b><b>Staff effort <span>include review</span></b><b>Evidence <span>retain corrections</span></b></div></Panel></div>{controls}</div>;
     case "library-activity-kit": return <div className="role-mission-board role-board--activity-kit">
-      <div className="role-kit-bench"><Panel icon={Sparkles} label="Program planning" title="Idea cards"><DataRow title="Summer activity proposals" value="Explore within constraints" state="good" /><DataRow title="Board approvals" value="Use signed minutes only" state="warn" /></Panel>
+      <div className="role-kit-bench"><Panel icon={FileText} label="Program planning" title="Idea cards"><DataRow title="Summer activity proposals" value="Explore within constraints" state="good" /><DataRow title="Board approvals" value="Use signed minutes only" state="warn" /></Panel>
         <div className="role-kit-arrow"><ArrowRight /><span>Verified facts and IDs</span><ArrowRight /></div>
         <Panel icon={Package} label="Two outputs" title="Staff kit + catalog import"><div className="role-output-cards"><span><FileText />Editable activity kit</span><span><Braces />Structured program ID array</span></div></Panel>
         <Panel icon={Database} label="Handoff" title="Fresh team chat"><p>Carry verified dates and source IDs; leave unrelated brainstorming in its own context.</p></Panel></div>{controls}</div>;
@@ -71,11 +72,11 @@ export function RoleMissionBoard({ mission, position, selected, select }: Props)
     case "library-workers": return <div className="role-mission-board role-board--library-workers">
       <div className="role-worker-room"><Panel icon={Users} label="Parallel research" title="One collection per worker"><div className="role-worker-cards"><article><b>Collection A</b><span>Boundary · dates · accession · citations</span></article><article><b>Collection B</b><span>Boundary · dates · accession · citations</span></article></div></Panel>
         <Panel icon={Database} label="MCP catalog" title="Resource or tool"><div className="role-interface-compare"><span><BookOpen />Policy by URI<br /><b>Resource</b></span><span><Search />Parameterized live search<br /><b>Tool</b></span></div></Panel>
-        <Panel icon={Sparkles} label="Shared procedure" title="Skill + authorized lookup"><p>Keep the repeatable workflow reusable while retrieving current catalog information through the authorized connector.</p></Panel></div>{controls}</div>;
+        <Panel icon={FileText} label="Shared procedure" title="Skill + authorized lookup"><p>Keep the repeatable workflow reusable while retrieving current catalog information through the authorized connector.</p></Panel></div>{controls}</div>;
     case "repair-desk-safety": return <div className="role-mission-board role-board--repair-safety">
-      <div className="role-repair-control"><Panel icon={FileText} label="Supplier PDF" title="Document is evidence, not authority"><div className="role-security-flow"><span>Untrusted source text</span><ArrowRight /><span>Draft proposal</span><ArrowRight /><b>Staff approval</b><ArrowRight /><span>Shared endpoint</span></div></Panel>
-        <Panel icon={ShieldCheck} label="Pre-action checks" title="Validate before execution"><DataRow title="Resolved cleanup path" value="Must stay in selected project" state="warn" /><DataRow title="Approval check" value="At endpoint for every caller" state="good" /><DataRow title="Supplier result" value="Empty and upstream unavailable differ" state="warn" /></Panel>
-        <Panel icon={LockKeyhole} label="Environment setup" title="Separate credentials"><div className="role-key-cards"><span>Staging · independently revocable</span><span>Production · separate server-held key</span></div></Panel></div>{controls}</div>;
+      <div className="role-repair-control"><Panel icon={FileText} label="Supplier document" title="Supplier PDF"><div className="role-security-flow"><span>Untrusted source text</span><ArrowRight /><span>Draft proposal</span><ArrowRight /><b>Staff approval</b><ArrowRight /><span>Shared endpoint</span></div></Panel>
+        <Panel icon={ShieldCheck} label="Pre-action checks" title="Cleanup request"><DataRow title="Resolved cleanup path" value="Must stay in selected project" state="warn" /><DataRow title="Approval check" value="At endpoint for every caller" state="good" /><DataRow title="Supplier result" value="Empty and upstream unavailable differ" state="warn" /></Panel>
+        <Panel icon={LockKeyhole} label="Environment setup" title="Credentials"><div className="role-key-cards"><span>Staging · independently revocable</span><span>Production · separate server-held key</span></div></Panel></div>{controls}</div>;
     case "developer-release": return <div className="role-mission-board role-board--dev-release">
       <div className="role-release-room"><Panel icon={GitPullRequest} label="Release candidate" title="Pinned configuration"><DataRow title="Resolved model ID" value="Versioned" /><DataRow title="Prompt + settings" value="Pinned for replay" /><DataRow title="Source commit" value="Recorded with results" /></Panel>
         <Panel icon={Activity} label="Labeled evaluation" title="Repeat runs and slice checks"><div className="role-release-slices"><span>Routine inputs</span><span>Ambiguous inputs</span><span>Address corrections</span></div></Panel>
@@ -83,7 +84,7 @@ export function RoleMissionBoard({ mission, position, selected, select }: Props)
     case "public-permit-discovery": return <div className="role-mission-board role-board--permit-discovery">
       <div className="role-service-map"><Panel icon={BriefcaseBusiness} label="Permit service · applicant journey" title="Find the actual wait"><OrderlySteps items={["Submit form", "Request missing attachment", "Review eligibility", "Issue with approval"]} /><div className="role-time-cards"><span>Turnaround · six days</span><span>Drafting · ten minutes</span><span>Incomplete forms · twice the wait</span></div></Panel>
         <Panel icon={Users} label="Owner interview notes" title="Visible status and approval"><DataRow title="Support owner" value="Stale status reports" state="warn" /><DataRow title="Policy owner" value="Limit changes shown before sign-off" state="good" /></Panel>
-        <Panel icon={Table2} label="Cost per resolution" title="Include retries and service outcome"><div className="role-cost-compare"><span>Route A · 1¢ + 3¢ retry on half</span><span>Route B · 2.2¢</span><b>Compare complete cost and SLA</b></div></Panel></div>{controls}</div>;
+        <Panel icon={Table2} label="Route comparison" title="Cost per resolution"><div className="role-cost-compare"><span>Route A · 1¢ + 3¢ retry on half</span><span>Route B · 2.2¢</span><b>Compare complete cost and SLA</b></div></Panel></div>{controls}</div>;
     case "library-retrieval-architecture": return <div className="role-mission-board role-board--retrieval">
       <div className="role-retrieval-room"><Panel icon={Search} label="Archive query types" title="Exact ID and description"><div className="role-query-lanes"><span>Accession number <b>lexical match needed</b></span><span>Procedure description <b>semantic match needed</b></span></div></Panel>
         <Panel icon={Workflow} label="Trace view" title="Measure each retrieval stage"><OrderlySteps items={["Ingest + revision", "Index", "Retrieve", "Rerank", "Answer"]} /><p>Carry trace IDs and timings; keep case contents out of logs.</p></Panel>
@@ -91,23 +92,23 @@ export function RoleMissionBoard({ mission, position, selected, select }: Props)
     case "professional-eval-gate": return <div className="role-mission-board role-board--eval-gate">
       <div className="role-eval-console"><Panel icon={Activity} label="Release dashboard" title="Independent operating signals"><div className="role-eval-metrics"><span>Accuracy</span><span>Escalation errors</span><span>p95 latency</span><span>Cost per resolution</span></div></Panel>
         <Panel icon={GitPullRequest} label="Canary control" title="Eligible traffic"><div className="role-canary-bar"><i /><span>5% exposure available</span></div><p>Randomize eligible cases and keep a separate escalation rollback boundary.</p></Panel>
-        <Panel icon={Users} label="Evaluation room" title="Human review where judgment matters"><DataRow title="Required fields" value="Exact automated check" state="good" /><DataRow title="Grounding + handoff" value="Calibrated human review" state="warn" /><DataRow title="New attachment layout" value="Sample labeled outcomes by layout" state="warn" /></Panel></div>{controls}</div>;
+        <Panel icon={Users} label="Evaluation room" title="Review queue"><DataRow title="Required fields" value="Exact automated check" state="good" /><DataRow title="Grounding + handoff" value="Calibrated human review" state="warn" /><DataRow title="New attachment layout" value="Sample labeled outcomes by layout" state="warn" /></Panel></div>{controls}</div>;
     case "market-scale": return <div className="role-mission-board role-board--market-scale">
-      <div className="role-token-bench"><Panel icon={Activity} label="Candidate comparison" title="Check all operating limits"><div className="role-model-table"><div><b>Candidate</b><b>Quality</b><b>Cost</b><b>p95</b></div><div><strong>A</strong><span>95%</span><span>$0.01</span><span>1.6 s</span></div><div><strong>B</strong><span>98%</span><span>$0.04</span><span>2.8 s</span></div><footer>Targets · 94% · $0.02 · under 2 s</footer></div></Panel>
-        <Panel icon={Database} label="Context assembly" title="Stable prefix before variable facts"><div className="role-context-blocks"><span>Approved policy + rubric</span><ArrowRight /><span>Team metadata + request</span></div><p>Persist verified claims with source IDs; retrieve only the active case subset.</p></Panel>
+      <div className="role-token-bench"><Panel icon={Activity} label="Operating limits" title="Candidate comparison"><div className="role-model-table"><div><b>Candidate</b><b>Quality</b><b>Cost</b><b>p95</b></div><div><strong>A</strong><span>95%</span><span>$0.01</span><span>1.6 s</span></div><div><strong>B</strong><span>98%</span><span>$0.04</span><span>2.8 s</span></div><footer>Targets · 94% · $0.02 · under 2 s</footer></div></Panel>
+        <Panel icon={Database} label="Context assembly" title="Context order"><div className="role-context-blocks"><span>Approved policy + rubric</span><ArrowRight /><span>Team metadata + request</span></div><p>Persist verified claims with source IDs; retrieve only the active case subset.</p></Panel>
         <Panel icon={FileCheck2} label="Held-out examples" title="Waived field vs missing field"><DataRow title="Waived by policy" value="Not the same as required-but-missing" state="warn" /><DataRow title="Cache regression" value="Compare matched runs around the breakpoint" /></Panel></div>{controls}</div>;
     case "tenant-tools": return <div className="role-mission-board role-board--tenant-tools">
       <div className="role-identity-map"><Panel icon={LockKeyhole} label="Verified caller" title="Tenant scope from identity"><div className="role-identity-flow"><span>Signed-in identity</span><ArrowRight /><b>Server-side tenant scope</b><ArrowRight /><span>Scoped search results</span></div></Panel>
         <Panel icon={Wrench} label="Capability registry" title="Tools by task family"><DataRow title="Triage" value="Required read capabilities" state="good" /><DataRow title="Current agent list" value="40 tools · includes payroll and writes" state="bad" /><DataRow title="Nightly CSV transfer" value="Existing bulk API" state="good" /></Panel>
-        <Panel icon={Search} label="Discovery" title="Authorized capabilities only"><p>Discover the relevant tools for this task; enforce the same scope where the service executes.</p></Panel></div>{controls}</div>;
+        <Panel icon={Search} label="Discovery" title="Tool list"><p>Discover the relevant tools for this task; enforce the same scope where the service executes.</p></Panel></div>{controls}</div>;
     case "community-controls": return <div className="role-mission-board role-board--community-controls">
-      <div className="role-governance-map"><Panel icon={Network} label="Production data path" title="Track every retained copy"><OrderlySteps items={["Source database", "Prompt / model", "Diagnostics", "Derived output"]} /><p>These stores have separate retention surfaces.</p></Panel>
+      <div className="role-governance-map"><Panel icon={Network} label="Production data path" title="Retained copies"><OrderlySteps items={["Source database", "Prompt / model", "Diagnostics", "Derived output"]} /><p>These stores have separate retention surfaces.</p></Panel>
         <Panel icon={ShieldCheck} label="Action boundary" title="Draft · approval · write"><div className="role-security-flow"><span>Untrusted evidence</span><ArrowRight /><span>Draft</span><ArrowRight /><b>Required operator approval</b><ArrowRight /><span>Verified service write</span></div><DataRow title="Sensitive account" value="Second approval required" state="warn" /></Panel>
-        <Panel icon={Activity} label="Failure state" title="Unavailable is not empty"><DataRow title="Completed search with no match" value="Successful empty result" state="good" /><DataRow title="Upstream outage" value="Unavailable · uncertainty shown" state="warn" /></Panel></div>{controls}</div>;
+        <Panel icon={Activity} label="Failure state" title="Search results"><DataRow title="Completed search with no match" value="Successful empty result" state="good" /><DataRow title="Upstream outage" value="Unavailable · uncertainty shown" state="warn" /></Panel></div>{controls}</div>;
     case "regional-operations": return <div className="role-mission-board role-board--regional-ops">
       <div className="role-ops-wall"><Panel icon={FileClock} label="Incoming on-call" title="Ten-minute outage route"><OrderlySteps items={["Alert named owner", "Open staffed manual queue", "Route by failure stage", "Review quality after recovery"]} /></Panel>
         <Panel icon={ClipboardList} label="Deployed system record" title="Reproduce the current behavior"><DataRow title="Data flow + control versions" value="Needed for handoff" /><DataRow title="Failure fixtures" value="Success and outage cases" /><DataRow title="Owners" value="Named for each service stage" /></Panel>
         <Panel icon={Users} label="Scoped specialist work" title="Synthesis with unresolved conflicts"><DataRow title="Source IDs" value="Preserve with each claim" state="good" /><DataRow title="Conflicts and gaps" value="Return to the coordinator" state="warn" /></Panel></div>{controls}</div>;
-    default: return <div className="role-mission-board role-board--unmapped"><Panel icon={ClipboardList} label="Assignment case" title={decision.station}><p>{decision.evidence}</p></Panel>{controls}</div>;
+    default: return <div className="role-mission-board role-board--unmapped"><Panel icon={ClipboardList} label="Mission file" title={decision.station}><p>{decision.evidence}</p></Panel>{controls}</div>;
   }
 }

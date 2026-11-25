@@ -94,8 +94,8 @@ export function MissionTransfer({ mission, record, onChange }: {
           setLocal(undefined);
           setRetaking(true);
           requestAnimationFrame(() => heading.current?.focus());
-        }}>Start a new check to schedule the follow-up</button>}
-        {error && <p role="alert">This browser could not save the exam check.</p>}
+        }}>Start new practice questions to schedule the 7-day review</button>}
+        {error && <p role="alert">This browser could not save the practice questions.</p>}
       </> : (
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <p>Apply the same skills in a different setting. Explanations appear after you submit.</p>
@@ -116,7 +116,7 @@ export function MissionTransfer({ mission, record, onChange }: {
               </label>)}
             </fieldset>;
           })}
-          <button className="button button-primary" disabled={!complete || busy} type="submit">Submit exam check</button>
+          <button className="button button-primary" disabled={!complete || busy} type="submit">Submit practice questions</button>
         </form>
       )}
     </section>
@@ -152,7 +152,7 @@ export function MissionFollowup({ mission, record, onChange }: {
   }
 
   return <section className="mission-followup" aria-labelledby="mission-followup-title">
-    <h3 id="mission-followup-title" ref={heading} tabIndex={-1}>{result ? "Follow-up results" : "Follow-up practice"}</h3>
+    <h3 id="mission-followup-title" ref={heading} tabIndex={-1}>{result ? "7-day review results" : "7-day review"}</h3>
     {result ? <>
       <p>{questions.filter((question) => isCorrect(question, result.answers[question.id])).length} of {questions.length} correct · delayed domain practice</p>
       {questions.map((question) => {
@@ -174,7 +174,7 @@ export function MissionFollowup({ mission, record, onChange }: {
       })}
       {error && <p role="alert">This browser could not save the follow-up.</p>}
     </> : <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <p>These held-out questions revisit the exam domains in this assignment. They are practice evidence, not an exam score.</p>
+      <p>These held-out questions revisit the exam domains in this mission. They are practice, not an exam score.</p>
       {questions.map((question) => {
         const picks = answers[question.id] ?? [];
         const multiple = question.correct.length > 1;
@@ -192,7 +192,7 @@ export function MissionFollowup({ mission, record, onChange }: {
           </label>)}
         </fieldset>;
       })}
-      <button className="button button-primary" disabled={!complete || busy} type="submit">Submit follow-up</button>
+      <button className="button button-primary" disabled={!complete || busy} type="submit">Submit 7-day review</button>
       {error && <p role="alert">This browser could not save the follow-up.</p>}
     </form>}
   </section>;
@@ -289,7 +289,7 @@ export function MissionWorkbench({ mission, record, dialog, onClose, onChange, o
       {beat === "first-answer" && <p>{first.reply}</p>}
       {beat === "second-opening" && <p>{second.opening}</p>}
       {beat === "second-answer" && <p>{second.reply}</p>}
-      {beat === "evidence" && <><p className="small-label">Case file · {mission.workload}</p><p>{mission.brief}</p><p>{mission.specialist}</p></>}
+      {beat === "evidence" && <><p className="small-label">Mission file · {mission.workload}</p><p>{mission.brief}</p><p>{mission.specialist}</p></>}
     </div>
     }
 
@@ -299,10 +299,10 @@ export function MissionWorkbench({ mission, record, dialog, onClose, onChange, o
     </div>}
     {beat === "first-answer" && <div className="conversation-actions"><ConversationAction primary disabled={busy} onClick={() => void recordInterview(first, "second-opening")}>Hear from {second.name.split(" ")[0]}</ConversationAction></div>}
     {beat === "second-opening" && <div className="conversation-actions"><ConversationAction primary onClick={() => focusBeat("second-answer")}>{second.question}</ConversationAction></div>}
-    {beat === "second-answer" && <div className="conversation-actions"><ConversationAction primary disabled={busy} onClick={() => void recordInterview(second, "evidence")}>Open case file</ConversationAction></div>}
+    {beat === "second-answer" && <div className="conversation-actions"><ConversationAction primary disabled={busy} onClick={() => void recordInterview(second, "evidence")}>Open mission file</ConversationAction></div>}
 
     {beat === "evidence" && <>
-      <details className="conversation-file"><summary>Review stakeholder conversations and case evidence</summary>
+      <details className="conversation-file"><summary>Review stakeholder conversations and mission evidence</summary>
         <dl>{experience.interviews.map((interview) => <div key={interview.id}><dt>{interview.name} · {spoken.has(interview.id) ? "Conversation saved" : "Stakeholder"}</dt>
           <dd><strong>You asked:</strong> {interview.question} <strong>{interview.name.split(" ")[0]}:</strong> {interview.reply}</dd></div>)}
           {mission.decisions.map(({ objective, station: name, evidence }) => <div key={objective}><dt>{name} · Objective {objective}</dt><dd>{evidence}</dd></div>)}

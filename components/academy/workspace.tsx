@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  ArrowRight, BookOpen, Check, ChevronDown, ClipboardList, MapPin, Play, RotateCcw,
+  ArrowRight, Check, ChevronDown, Play,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { places } from "../../lib/world";
 import { dispatchProgressKey, meetsDispatchGoal, readDispatch, runShift } from "../../lib/shift";
@@ -22,12 +22,15 @@ import type { PortfolioRecords } from "../../lib/claude/pathway";
 import { progressScope, subscribeToProgress } from "../../lib/progress-storage";
 import { recordPracticeMilestone } from "../../lib/practice-measurement";
 import { useAccount } from "../account";
-import { ExternalLink, trackIcons } from "./chrome";
+import { ExternalLink } from "./chrome";
 import { CapstoneWorkspace } from "./capstone-workspace";
 import { DecemberWorkshop } from "./december-workshop";
 import { EntryBridge } from "./entry-bridge";
 import { GuideSkills } from "./guide-skills";
 import { ReadinessPanel } from "./readiness-panel";
+import { TodayWork } from "../today/today-work";
+import { useTodaysWork } from "../today/use-today";
+import type { TodayItem } from "../../lib/today/plan";
 import { dateFormat, dueLabel, modeLabel, PracticeReview, PracticeSession } from "./session";
 import { rehearsalFormLabel } from "../../lib/claude/assessment/forms";
 import type { RehearsalForm } from "../../lib/claude/assessment/forms";
@@ -38,7 +41,12 @@ import { getCapstoneDefinition } from "../../lib/claude/capstones";
 import { objectiveCoverage } from "../../lib/claude/curriculum";
 import { guideCityHref } from "../../lib/claude/curriculum/city-guide";
 import { bridges } from "../../lib/claude/curriculum/bridges";
-import { benchmarkEvidence, emptyReadiness, readReadiness, readinessKey, updateReadiness } from "../../lib/claude/readiness";
+import { cityEvidenceFor, emptyReadiness, readReadiness, readinessKey, updateReadiness } from "../../lib/claude/readiness";
+import { benchmarkEvidence } from "../../lib/claude/benchmark";
+import { lessonHref, lessonObjectiveFor, lessonObjectives, studyHref } from "../../lib/claude/lessons/paths";
+import { cramWindowDays, daysUntilExam, guideForExamDate, inCramWindow, readExamDate, saveExamDate } from "../../lib/exam-date";
+import { useStudied } from "./lesson-progress";
+import { useRestoreGate } from "../restore-gate";
 
 type View = "overview" | "session" | "review";
 
@@ -64,6 +72,8 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [now, setNow] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // Mounted from a practice deep link: hold the "Opening practice…" veil until saved progress is restored.
+  useRestoreGate("route", loaded);
   const [sessionOnly, setSessionOnly] = useState(false);
   const [assignmentComplete, setAssignmentComplete] = useState(false);
   const [cityRecords, setCityRecords] = useState<PortfolioRecords>({});
@@ -72,6 +82,8 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
   const [error, setError] = useState<string | null>(null);
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [discard, setDiscard] = useState(false);
+  const [examDate, setExamDate] = useState<string | null>(null);
+  const studied = useStudied(track.id);
   const domainFocus = useRef<string | null>(null);
   const latest = useRef(emptyProgress);
   const pending = useRef<Promise<boolean>>(Promise.resolve(true));
@@ -94,7 +106,11 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
   const forms = rehearsalForms(track.id, version, progress.attempts, exposure);
   const availableReassessments = new Set(selectedBlueprint.domains.filter(({ id }) =>
     reassessmentItems(track.id, version, id, progress.attempts, exposure).length > 0).map(({ id }) => id));
-  const benchmark = benchmarkEvidence(track, version, readiness, progress.attempts, now);
+  const cram = inCramWindow(examDate, now || undefined);
+  const city = cityEvidenceFor(track, version, portfolio.applied, portfolio.covered);
+  const benchmark = benchmarkEvidence(track, version, readiness, progress.attempts, now, { cram, city });
+  const lessonCount = lessonObjectives(track).length;
+  const examDays = examDate ? daysUntilExam(examDate, now || undefined) : null;
   const guided = new Set(readiness.guide);
   const passedSkills = (results?: typeof benchmark.practical.capstone) => new Set(results?.results.filter(({ passed }) => passed).flatMap(({ objectives }) => objectives));
   const caseSkills = passedSkills(benchmark.practical.capstone ?? benchmark.practical.firstCapstone);
@@ -120,7 +136,32 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
   const transferDue = benchmark.practical.transferDue;
   const followup = progress.attempts.find((attempt) => attempt.mode === "followup" && (attempt.version ?? "july-2026") === version);
   const selectedAttempt = progress.attempts.find(({ id }) => id === reviewId);
-  const Icon = trackIcons[track.id];
+  const nextStep = progress.draft ? { label: "Resume your practice session", detail: `${progress.draft.itemIds.length} questions saved`, href: "#practice-controls" }
+    : !starterComplete ? { label: "Start your first mission", detail: track.assignment, href: `${cityAssignmentHref(track)}&mission=${starter.id}&guide=${version}` }
+    // Experience leads: more cases until about 40% are done (today's work uses the same pacing), then a practice exam.
+    // Reading is never assigned; lessons surface from the cases themselves.
+    : !benchmark.timed && portfolio.completed.length < Math.ceil(portfolio.missions.length * 0.4) ? { label: "Continue in the city", detail: "Your next mission is waiting", href: cityAssignmentHref(track) }
+    : !benchmark.timed ? { label: "Take a practice exam", detail: `${examMinutes} minutes, results by domain`, href: "#rehearsal" }
+    : !benchmark.practical.capstone ? { label: "Pass the hands-on lab", detail: "Written answers checked against test cases", href: "#track-practicals" }
+    : { label: "Review your weakest domain", detail: "See your results by domain", href: "#readiness" };
+  const legacyCompletions = useMemo(() => new Set(assignmentComplete ? [starter.id] : []), [assignmentComplete, starter.id]);
+  const today = useTodaysWork(loaded ? track : null, cityRecords, legacyCompletions);
+  function startTodayItem(item: TodayItem) {
+    const { action } = item;
+    if (action.type === "date") {
+      document.querySelector<HTMLInputElement>(".academy-exam-date input[type=date]")?.focus();
+      return;
+    }
+    if (action.type === "mission") {
+      window.location.assign(`${cityAssignmentHref(track)}&mission=${action.missionId}&guide=${version}`);
+      return;
+    }
+    const target = new URL(action.href, window.location.href);
+    if (target.pathname === window.location.pathname && target.hash && target.search === window.location.search) {
+      document.querySelector(target.hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      (document.querySelector(target.hash) as HTMLElement | null)?.focus({ preventScroll: true });
+    } else window.location.assign(target.href);
+  }
   const practiceCount = Math.min(bank.practice.length, 12);
   const pacing = Math.ceil(practiceCount * examMinutes / selectedBlueprint.count);
   const focusHeading = useRef(false);
@@ -149,8 +190,13 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
       setNow(Date.now());
     }
     restore();
+    const savedDate = readExamDate(track.id);
+    setExamDate(savedDate);
     if (!linkedGuide && !latestReadiness.current.version) {
-      setVersion(december && (latest.current.draft?.version === decemberVersion || Date.now() >= Date.parse("2026-12-07T00:00:00-06:00")) ? decemberVersion : "july-2026");
+      // Without a saved choice, follow the exam date. With no date either, use the December guide:
+      // it governs every exam from December 7 and the exam-date card asks earlier candidates to switch.
+      const fromDate = savedDate ? guideForExamDate(savedDate) : decemberVersion;
+      setVersion(december && (latest.current.draft?.version === decemberVersion || fromDate === decemberVersion) ? decemberVersion : "july-2026");
     }
     setLoaded(true);
     if (window.location.hash === "#assignment") {
@@ -248,10 +294,22 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
   function selectVersion(examVersion: ExamVersion) {
     setVersion(examVersion);
     const url = new URL(window.location.href);
+    url.searchParams.set("practice", "1");
     url.searchParams.delete("guide");
+    url.searchParams.delete("domain");
     url.searchParams.delete("objective");
     window.history.replaceState(window.history.state, "", url);
     void saveReadiness({ type: "version", version: examVersion });
+  }
+
+  function chooseExamDate(value: string | null) {
+    setExamDate(value);
+    saveExamDate(track.id, value);
+    setNow(Date.now());
+    if (value && december) {
+      const guide = guideForExamDate(value);
+      if (guide !== version) selectVersion(guide);
+    }
   }
 
   function showReview(id: string) {
@@ -311,12 +369,11 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
   }
 
   return (
-    <main className="academy-width academy-workspace">
+    <main id="academy-main" tabIndex={-1} className="academy-width academy-workspace academy-study-workspace">
       {breadcrumbs}
-      <a className="academy-back" href={trackHref(track)}>Read study guide and sample questions</a>
       <section className="academy-track-hero" data-track={track.id}>
         <div>
-          <div className="academy-title-label"><span className="academy-track-icon"><Icon size={22} strokeWidth={1.7} aria-hidden="true" /></span><span className="academy-code">{track.code}</span></div>
+          <div className="academy-title-label"><span className="academy-code">{track.code}</span></div>
           <h1>{trackTitle(track)}</h1>
           <p>{track.description}</p>
         </div>
@@ -329,30 +386,58 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
       <div className="academy-blueprint-line">
         <span>{examGuideLabel(track, version)}</span>
         <ExternalLink href={selectedBlueprint.guide}>Official exam guide</ExternalLink>
+        <Link className="academy-external" href={trackHref(track)}>Study guide and sample questions</Link>
       </div>
-      {december && <fieldset className="academy-exam-version">
-        <legend>When are you taking the exam?</legend>
-        <label><input type="radio" name="exam-version" checked={version === "july-2026"} onChange={() => selectVersion("july-2026")} />Before December 7</label>
-        <label><input type="radio" name="exam-version" checked={version === decemberVersion} onChange={() => selectVersion(decemberVersion)} />December 7 or later</label>
-      </fieldset>}
-      <nav className="academy-pathway-links" aria-label="Learning pathway">
-        <a href="#entry-bridge" onClick={() => { const entry = document.getElementById("entry-bridge") as HTMLDetailsElement | null; if (entry) entry.open = true; }}>Start here</a>
-        <Link href={cityAssignmentHref(track)}>City assignments</Link>
-        <a href={revised ? "#guide-skills" : "#domain-title"}>Practice by domain</a>
-        <a href="#track-practicals">Practical cases</a>
-        <a href="#rehearsal">Timed forms</a>
-      </nav>
-      <section className="academy-panel academy-assignment-card academy-first-assignment" aria-labelledby="track-assignment">
+      {loaded && today && today.items.length > 0 && <div className="academy-today"><TodayWork view={today} onAction={startTodayItem} /></div>}
+      {loaded && !(today && today.items.length > 0) && <section className="academy-panel academy-assignment-card academy-next-step" aria-labelledby="next-step-title">
         <div>
-          <p className="academy-kicker"><MapPin size={15} aria-hidden="true" /> {place.name}</p>
+          <h2 id="next-step-title">What to do next</h2>
+          <p><strong>{nextStep.label}</strong>. {nextStep.detail}.</p>
+        </div>
+        {nextStep.href.startsWith("#")
+          ? <a className="academy-button primary" href={nextStep.href}>{nextStep.label} <ArrowRight size={16} aria-hidden="true" /></a>
+          : <Link className="academy-button primary" href={nextStep.href}>{nextStep.label} <ArrowRight size={16} aria-hidden="true" /></Link>}
+      </section>}
+      <section className="academy-panel academy-exam-date" aria-labelledby="exam-date-title">
+        <div className="academy-section-heading"><h2 id="exam-date-title">Your exam date</h2></div>
+        <div className="academy-exam-date-row">
+          <label>Exam date <input type="date" value={examDate ?? ""} onChange={(event) => chooseExamDate(event.target.value || null)} /></label>
+          {december && <fieldset className="academy-exam-version">
+            <legend>Exam guide</legend>
+            <label><input type="radio" name="exam-version" checked={version === "july-2026"} onChange={() => selectVersion("july-2026")} />Before December 7</label>
+            <label><input type="radio" name="exam-version" checked={version === decemberVersion} onChange={() => selectVersion(decemberVersion)} />December 7 or later</label>
+          </fieldset>}
+        </div>
+        <p>{examDays === null
+          ? `Set your date to load the right guide${december ? " (the December 7 revision changed this exam’s domains and weights)" : ""} and to get a plan that fits the time you have.`
+          : examDays < 0 ? "This date has passed. Set your next attempt to update the plan."
+          : `${examDays === 0 ? "Today" : `${examDays} ${examDays === 1 ? "day" : "days"} away`} · ${examGuideLabel(track, version)}.`}</p>
+        {cram && <p className="academy-positive" role="status"><Check size={16} aria-hidden="true" /> Your exam is under {cramWindowDays} days away, so the short-runway plan applies: a second practice exam you haven’t seen replaces the 7-day review lab. Today’s work puts the missions for your weakest areas first; each opens its lesson when you need it.</p>}
+      </section>
+      <section className="academy-panel academy-assignment-card academy-study-card" aria-labelledby="study-guide-title">
+        <div>
+          <h2 id="study-guide-title">Study guide: {lessonCount} lessons</h2>
+          <p>One lesson per exam objective, with the configuration, API and workflow details the exam asks about. {studied.size}/{lessonCount} studied.</p>
+        </div>
+        <Link className="academy-button primary" href={studyHref(track)}>{studied.size ? "Continue studying" : "Open the study guide"} <ArrowRight size={16} aria-hidden="true" /></Link>
+      </section>
+      <section className="academy-panel academy-assignment-card academy-first-assignment" id="city-cases" tabIndex={-1} aria-labelledby="track-assignment">
+        <div>
+          <p className="academy-kicker">{place.name}</p>
           <h2 id="track-assignment">{track.assignment}</h2>
           <p>{cityRecords[starter.id]?.casework && starterCase ? starterCase.retest.done : assignmentComplete && assignment ? assignment.impact : bridges[track.id].mission}</p>
-          {starterComplete && <p className="academy-positive"><Check size={16} aria-hidden="true" /> First assignment saved</p>}
+          {starterComplete && <p className="academy-positive"><Check size={16} aria-hidden="true" /> First mission done</p>}
         </div>
-        <Link className="academy-button secondary" href={starterComplete ? cityAssignmentHref(track) : `${cityAssignmentHref(track)}&mission=${starter.id}&guide=${version}`}>
-          {starterComplete ? "Continue in the city" : "Open your first assignment"} <ArrowRight size={16} aria-hidden="true" />
+        <Link className="academy-button primary" href={starterComplete ? cityAssignmentHref(track) : `${cityAssignmentHref(track)}&mission=${starter.id}&guide=${version}`}>
+          {starterComplete ? "Continue in the city" : "Open your first mission"} <ArrowRight size={16} aria-hidden="true" />
         </Link>
       </section>
+      <nav className="academy-pathway-links" aria-label="Study sections">
+        <Link href={studyHref(track)}>Lessons</Link>
+        <Link href={cityAssignmentHref(track)}>City</Link>
+        <a href="#practice-controls">{progress.draft ? "Resume practice" : "Practice"}</a>
+        <a href="#rehearsal">Exams</a>
+      </nav>
       {readinessError && <p className="academy-error" role="alert">{readinessError}</p>}
       <div className="academy-track-layout">
         <div className="academy-main-column">
@@ -360,33 +445,24 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
             onSave={(choices) => saveReadiness({ type: "bridge", choices })}
             onSkill={(objective) => focusDomain((revised ? "guide-case-" : "july-skill-") + objective)} />}
           <section className="academy-panel academy-pathway-progress" aria-labelledby="overall-progress-heading">
-            <h2 id="overall-progress-heading">Learning progress</h2>
+            <h2 id="overall-progress-heading">Progress</h2>
+            {!user && loaded && !sessionOnly && <p>Signed-out progress is saved in this browser.</p>}
             <dl>
-              <div><dt>City assignments saved</dt><dd>{portfolio.completed.length}/{portfolio.missions.length}</dd></div>
-              <div><dt>{revised ? "December guided objectives practiced" : `${cityGuide} guide objectives applied`}</dt><dd>{objectivesPracticed}/{objectiveTotal}</dd></div>
-              <div><dt>{cityGuide} objectives correct on a first-seen city check</dt><dd>{portfolio.demonstrated.size}</dd></div>
-              <div><dt>Practical cases passed for this guide</dt><dd>{Number(!!benchmark.practical.capstone) + Number(!!benchmark.practical.transfer)}/2</dd></div>
+              <div><dt>Lessons studied</dt><dd>{studied.size}/{lessonCount}</dd></div>
+              <div><dt>City missions done</dt><dd>{portfolio.completed.length}/{portfolio.missions.length}</dd></div>
+              <div><dt>{revised ? "Objectives practiced (December guide)" : `Objectives practiced (${cityGuide} guide)`}</dt><dd>{objectivesPracticed}/{objectiveTotal}</dd></div>
+              {portfolio.guided.size > 0 && <div><dt>Needed a hint (redo to count)</dt><dd>{portfolio.guided.size}</dd></div>}
+              <div><dt>Right first time ({cityGuide} guide)</dt><dd>{portfolio.demonstrated.size}</dd></div>
+              <div><dt>Hands-on labs passed</dt><dd>{Number(!!benchmark.practical.capstone) + Number(!!benchmark.practical.transfer)}/2</dd></div>
             </dl>
           </section>
-          <ReadinessPanel evidence={benchmark} domains={domainProgress} revised={revised} now={now}
-            onDomain={(id) => focusDomain((revised ? "december" : "july") + "-domain-" + id)}
-            availableReassessments={availableReassessments} reassessmentDisabled={!!progress.draft || !loaded || busy}
-            onReassess={(id) => { void start("reassessment", id); }} />
-          {revised && <>
-            <GuideSkills key={`${track.id}:${user?.id ?? "guest"}`} track={track} practiced={guided}
-              onPractice={(objective) => saveReadiness({ type: "guide", objective })} onTarget={(id, objective) => { void start("domain", id, undefined, objective); }} />
-            <DecemberWorkshop track={track.id} completed={readiness.workshop} onComplete={() => void saveReadiness({ type: "workshop" })} />
-          </>}
-          {loaded && <CapstoneWorkspace key={`${version}:${user?.id ?? "guest"}`} track={track} version={version} attempts={readiness.capstones}
-            onSubmit={(attempt) => saveReadiness({ type: "submission", attempt })} />}
-          <section className="academy-panel academy-start-panel" id="practice-controls" aria-labelledby="practice-title">
+          <section className="academy-panel academy-start-panel" id="practice-controls" tabIndex={-1} aria-labelledby="practice-title">
             <div className="academy-section-heading">
               <h2 id="practice-title">{progress.draft ? "Resume practice" : "Mixed practice"}</h2>
-              <ClipboardList size={22} strokeWidth={1.65} aria-hidden="true" />
             </div>
             {progress.draft ? (
               <>
-                <p>{modeLabel(track, progress.draft)} · {progress.draft.itemIds.length} questions{progress.draft.mode === "assessment" && ` · ${examGuideLabel(track, progress.draft.version)}`}</p>
+                <p>{modeLabel(track, progress.draft)}, {progress.draft.itemIds.length} questions{progress.draft.mode === "assessment" && ` (${examGuideLabel(track, progress.draft.version)})`}</p>
                 {discard
                   ? <div className="academy-actions">
                     <button className="academy-button secondary" disabled={busy} onClick={async () => {
@@ -414,20 +490,30 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
             {error && <p className="academy-error" role="alert">{error}</p>}
             {sessionOnly && <p className="academy-error" role="status">Browser storage is unavailable. This progress lasts until you leave the page.</p>}
           </section>
-          <section className="academy-panel academy-rehearsal-forms" id="rehearsal" aria-labelledby="rehearsal-title">
-            <h2 id="rehearsal-title">Timed exam rehearsals</h2>
-            <p>Each form has {examMinutes} minutes and results by exam domain. Save a fresh form for after you review weaker domains.</p>
-            <p>CertCity writes original questions following the published guide’s format. Each question asks you to choose an action using the case evidence.</p>
+          <section className="academy-panel academy-rehearsal-forms" id="rehearsal" tabIndex={-1} aria-labelledby="rehearsal-title">
+            <h2 id="rehearsal-title">Practice exams</h2>
+            <p>{examMinutes} minutes, original questions in the exam guide’s format, results by domain. Keep one exam unseen for your final check.</p>
             {revised && <p>Each form has 60 scored and 10 unscored questions. See feedback for every question after submitting.</p>}
             {forms.map(({ form, items, exposed, completed }) => <div key={form} className="academy-rehearsal">
               <div>
                 <h3>{rehearsalFormLabel(form)}</h3>
-                <p>{items.length > 0 ? <>{items.length} questions · {exposed ? `${exposed} previously seen` : "Fresh questions"}{completed && " · Completed"}</> : "No unused full set available for this guide."}</p>
+                <p>{items.length > 0 ? <>{items.length} questions, {exposed ? `${exposed} already seen` : "all new to you"}{completed && ". Completed"}</> : "No unused full set available for this guide."}</p>
               </div>
               <button type="button" className="academy-button primary" disabled={busy || !loaded || !!progress.draft || !items.length}
                 onClick={() => void start("assessment", null, form)}>{completed ? "Repeat" : "Start"} {rehearsalFormLabel(form).toLowerCase()} <ArrowRight size={16} aria-hidden="true" /></button>
             </div>)}
           </section>
+          <ReadinessPanel evidence={benchmark} domains={domainProgress} revised={revised} now={now}
+            onDomain={(id) => focusDomain((revised ? "december" : "july") + "-domain-" + id)}
+            availableReassessments={availableReassessments} reassessmentDisabled={!!progress.draft || !loaded || busy}
+            onReassess={(id) => { void start("reassessment", id); }} />
+          {revised && <>
+            <GuideSkills key={`${track.id}:${user?.id ?? "guest"}`} track={track} practiced={guided}
+              onPractice={(objective) => saveReadiness({ type: "guide", objective })} onTarget={(id, objective) => { void start("domain", id, undefined, objective); }} />
+            <DecemberWorkshop track={track.id} completed={readiness.workshop} onComplete={() => void saveReadiness({ type: "workshop" })} />
+          </>}
+          {loaded && <CapstoneWorkspace key={`${version}:${user?.id ?? "guest"}`} track={track} version={version} attempts={readiness.capstones}
+            onSubmit={(attempt) => saveReadiness({ type: "submission", attempt })} />}
           <section className="academy-domain-section" aria-labelledby="domain-title">
             <div className="academy-section-heading">
               <h2 id="domain-title">Question practice by domain</h2>
@@ -441,10 +527,10 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
                 const count = evidence.domainCounts.get(domain.id) ?? 0;
                 return (
                   <details key={domain.id} className="academy-domain" id={(revised ? "question" : "july") + "-domain-" + domain.id}>
-                    <summary><span><strong>{domain.title}</strong><small>{items.length} {items.length === 1 ? "question" : "questions"} · {available.size}/{domain.objectives.length} objectives in the bank{count ? ` · ${evidence.domainScores.get(domain.id) ?? 0}/${count} correct first-seen in practice` : ""}</small></span><span className="academy-weight">{domain.weight}%</span><ChevronDown size={17} aria-hidden="true" /></summary>
+                    <summary><span><strong>{domain.title}</strong><small>{items.length} {items.length === 1 ? "question" : "questions"} on {available.size} of {domain.objectives.length} objectives{count ? `, ${evidence.domainScores.get(domain.id) ?? 0}/${count} right first time` : ""}</small></span><span className="academy-weight">{domain.weight}%</span><ChevronDown size={17} aria-hidden="true" /></summary>
                     <div className="academy-domain-body">
-                      {!revised && <p>{domain.objectives.filter((_, i) => portfolio.applied.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} applied in city work
-                        {" · "}{domain.objectives.filter((_, i) => portfolio.demonstrated.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} correct on a first-seen check</p>}
+                      {!revised && <p>{domain.objectives.filter((_, i) => portfolio.applied.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} practiced in the city,
+                        {" "}{domain.objectives.filter((_, i) => portfolio.demonstrated.has(`${domain.id}.${i + 1}`)).length}/{domain.objectives.length} right first time</p>}
                       <ul className="academy-objectives">
                         {domain.skills.map(({ id: code, title: name, missions }) => (
                           <li key={code} id={(revised ? "question-skill-" : "july-skill-") + code} className="academy-mapped-skill">
@@ -452,7 +538,11 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
                               <div className="academy-mission-links">{missions.map((mission) => <Link key={mission.id} href={revised ? guideCityHref(track.id, mission.id, code) : `${cityAssignmentHref(track)}&mission=${mission.id}&guide=${version}`}>{mission.title}</Link>)}</div>
                             </div>
                             <div className="academy-skill-status">
-                              <span>{!revised && portfolio.demonstrated.has(code) ? "Check correct" : practiced.has(code) ? "Practiced" : !revised && portfolio.applied.has(code) ? "Applied in city" : "Available"}</span>
+                              {(() => {
+                                const lesson = lessonObjectiveFor(track, version, code);
+                                return lesson && <Link className="academy-button text" href={lessonHref(track, lesson)} aria-label={`Lesson for ${name}`}>{studied.has(lesson) ? "Lesson ✓" : "Lesson"}</Link>;
+                              })()}
+                              <span>{!revised && portfolio.demonstrated.has(code) ? "Right first time" : practiced.has(code) ? "Practiced" : !revised && portfolio.applied.has(code) ? "Practiced in the city" : "Available"}</span>
                               {available.has(code) && <button type="button" className="academy-button text" disabled={busy || !loaded} aria-label={"Practice " + name}
                                 onClick={() => void start("domain", domain.id, undefined, code)}>Practice</button>}
                             </div>
@@ -467,13 +557,13 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
             </div>
           </section>
         </div>
-        <aside className="academy-sidebar" aria-label="Follow-up and official resources">
+        <aside className="academy-sidebar" aria-label="7-day review and official resources">
           <section className="academy-panel" id="practice-followup">
-            <div className="academy-section-heading"><h2>Seven-day follow-up</h2><RotateCcw size={19} strokeWidth={1.7} aria-hidden="true" /></div>
-            <p>{followup ? "Your follow-up results are saved." : due === null ? "Submit mixed practice to unlock a new set of scenarios seven days later." : due > now ? `Available ${dueLabel(due)}.` : `${bank.followup.length} new scenarios are ready.`}</p>
+            <div className="academy-section-heading"><h2>7-day review</h2></div>
+            <p>{followup ? "Your 7-day review is saved." : due === null ? "New questions on the same skills open 7 days after mixed practice." : due > now ? `Opens ${dueLabel(due)}.` : `${bank.followup.length} new questions are ready.`}</p>
             {followup
-              ? <button className="academy-button secondary" onClick={() => showReview(followup.id)}>Review follow-up <ArrowRight size={16} aria-hidden="true" /></button>
-              : due !== null && due <= now && <button className="academy-button secondary" disabled={busy} onClick={() => void start("followup")}>Start follow-up <ArrowRight size={16} aria-hidden="true" /></button>}
+              ? <button className="academy-button secondary" onClick={() => showReview(followup.id)}>See 7-day review results <ArrowRight size={16} aria-hidden="true" /></button>
+              : due !== null && due <= now && <button className="academy-button secondary" disabled={busy} onClick={() => void start("followup")}>Start 7-day review <ArrowRight size={16} aria-hidden="true" /></button>}
           </section>
           {!!progress.attempts.length && (
             <section className="academy-panel academy-history">
@@ -490,7 +580,7 @@ export function TrackWorkspace({ track, breadcrumbs }: { track: Track; breadcrum
             </section>
           )}
           <section className="academy-panel academy-official">
-            <div className="academy-section-heading"><h2>Official resources</h2><BookOpen size={19} strokeWidth={1.7} aria-hidden="true" /></div>
+            <div className="academy-section-heading"><h2>Official resources</h2></div>
             <ExternalLink href={track.prep}>Anthropic prep courses</ExternalLink>
             <ExternalLink href={examRegistration(track)}>Exam registration</ExternalLink>
             <p>Registration requires a Claude Partner Network account. {user ? "Practice progress syncs to your CertCity account." : "Guest practice progress is stored on this device."}</p>

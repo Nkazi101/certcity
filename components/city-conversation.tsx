@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 import { ArrowRight, MessageCircle, X } from "lucide-react";
+import { CharacterPortrait } from "./character-portrait";
 
 export function ConversationFrame({ dialog, title, name, role, portrait, step, onClose, children, moduleProgress, variant = "conversation", room }: {
   dialog: RefObject<HTMLDialogElement | null>;
@@ -43,7 +44,7 @@ export function ConversationFrame({ dialog, title, name, role, portrait, step, o
           onClick={() => dialog.current?.close()}><X size={19} aria-hidden="true" /></button>
       </header>
       {variant === "conversation" && <div className="conversation-character">
-        {portrait ? <img className="conversation-portrait" src={`/models/portraits/${portrait}.webp`} alt="" width={360} height={416} /> :
+        {portrait ? <CharacterPortrait className="conversation-portrait" id={portrait} /> :
           <div className="conversation-symbol" aria-hidden="true"><MessageCircle size={26} /></div>}
       </div>}
       <section className={`conversation-card ${variant === "workbench" ? "conversation-card--workbench" : ""}`} aria-label={variant === "workbench" ? `${title} work area` : `Conversation with ${name}`}>

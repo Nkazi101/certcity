@@ -287,7 +287,7 @@ export const stations = [
     icon: Package,
     color: "sage",
     quote: "You can try a temporary failure once more. If access was denied, give a neutral response and keep the order details private.",
-    evidence: "One automatic retry per temporary failure. Access rules stay in force throughout the shift.",
+    evidence: "One automatic retry per temporary failure. Access rules stay in force all day.",
   },
 ] as const;
 

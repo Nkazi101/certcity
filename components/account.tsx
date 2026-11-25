@@ -9,6 +9,7 @@ import { diagnosticsEnabled, recordClientHealth, setDiagnosticsEnabled } from ".
 import { guestSaves, setProgressUser, subscribeToProgress } from "../lib/progress-storage";
 import { downloadProgressBackup } from "../lib/progress-recovery";
 import { getSupabase, supabaseConfigured } from "../lib/supabase/client";
+import { markHydrated, useRestoreGate } from "./restore-gate";
 import { queueGuestProgress, resolveProgressConflict, syncProgress } from "../lib/supabase/progress";
 import type { ProgressConflict } from "../lib/supabase/progress";
 
@@ -30,8 +31,15 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
   const [syncState, setSyncState] = useState<SyncState>("loading");
   const [conflicts, setConflicts] = useState<ProgressConflict[]>([]);
+  // Pages remount when the signed-in learner changes, so one learner's state never leaks into another's. The first
+  // resolution isn't a change: the page has only rendered the not-yet-known state, and remounting it would rebuild
+  // every component (and the 3D scene) on each signed-in reload.
+  const [firstScope, setFirstScope] = useState<string | null>(null);
   const schedule = useRef<() => void>(() => {});
   const userId = user?.id ?? null;
+  const scope = userId ?? "guest";
+
+  useEffect(markHydrated, []);
 
   useEffect(() => {
     const client = getSupabase();
@@ -47,6 +55,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         setConflicts([]);
       }
       setUser(next);
+      setFirstScope((first) => first ?? (nextId ?? "guest"));
       setAuthReady(true);
     });
     return () => subscription.unsubscribe();
@@ -119,13 +128,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const ready = authReady && (!user || syncState !== "loading");
+  useRestoreGate("progress", ready);
   return <AccountContext.Provider value={{ user, ready, syncState, conflicts, sync: () => schedule.current() }}>
-    <Fragment key={userId ?? "guest"}>{children}</Fragment>
+    <Fragment key={!authReady || scope === firstScope ? "initial" : scope}>{children}</Fragment>
   </AccountContext.Provider>;
 }
 
 function conflictLabel(key: string) {
-  if (key === "simza.city-dispatch.v1") return "City Dispatch shift";
+  if (key === "simza.city-dispatch.v1") return "City Dispatch order lookup";
   if (key === "simza.ccar-f.task-2.2.v1") return "City Dispatch certification progress";
   if (key === "certcity.city.active-assignment.v1") return "Active certification pathway";
   const parts = key.split(".");
@@ -207,7 +217,7 @@ export function AccountButton({ city = false }: { city?: boolean }) {
 
   return <>
     <button className={city ? "nav-button account-nav" : "button button-outline account-nav"} type="button"
-      aria-label={hasIssue ? "Account, sync needs attention" : label} aria-haspopup="dialog"
+      aria-label={hasIssue ? "Account, sync needs attention" : label} aria-haspopup="dialog" data-restore="progress"
       disabled={!ready && !user} onClick={openAccount}>
       <Icon size={17} aria-hidden="true" /><span>{label}</span>
     </button>
@@ -248,14 +258,14 @@ export function AccountButton({ city = false }: { city?: boolean }) {
             else setError("This browser could not save your diagnostic preference.");
           }} /> Share basic reliability diagnostics from this browser
         </label>
-        <p>Diagnostics include scene load times and sync interruptions. Your answers and case records stay out of these reports.</p>
+        <p>Diagnostics include scene load times and sync interruptions. Your answers and mission records stay out of these reports.</p>
         <Link href="/help#study-email" onClick={() => dialog.current?.close()}>Study email reminders</Link>
         <Link href="/help" onClick={() => dialog.current?.close()}>Study help and recovery</Link>
         {notice && <p role="status">{notice}</p>}
         {error && <p className="account-error" role="alert">{error}</p>}
       </div> : <form className="dialog-body account-body" onSubmit={signIn}>
         {sent ? <p role="status">Check <strong>{email}</strong> for a sign-in link. Open the link in this browser.</p> : <>
-          <p>Save your city assignments and practice across devices.</p>
+          <p>Save your missions and practice across devices.</p>
           <label htmlFor={inputId}>Email address</label>
           <input id={inputId} value={email} onChange={(event) => setEmail(event.target.value)} type="email" required autoComplete="email" />
         </>}

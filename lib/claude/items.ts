@@ -44,6 +44,18 @@ export const sources = {
 } as const;
 
 type Source = keyof typeof sources;
+
+/**
+ * Practice questions were rewritten to the exam-realism spec (research/exam-realism.md) on this date,
+ * keeping their ids. Answers to live-scored questions (mixed, domain and spaced-review practice, city
+ * mission checks) saved earlier refer to wording learners can no longer see, so they stay in history
+ * but no longer count as evidence. Timed practice exams keep a snapshot and are unaffected.
+ */
+export const questionReleaseAt = Date.parse("2026-11-25T00:00:00Z");
+// No learner answered anything before CertCity's first release; earlier timestamps are fixtures.
+const firstReleaseAt = Date.parse("2026-11-01T00:00:00Z");
+export const answeredBeforeRelease = (submittedAt: number | undefined) =>
+  submittedAt !== undefined && submittedAt >= firstReleaseAt && submittedAt < questionReleaseAt;
 type Choice = readonly [text: string, rationale: string];
 
 export type PracticeItem = ExamQuestion & {

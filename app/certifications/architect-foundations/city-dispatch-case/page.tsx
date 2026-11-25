@@ -17,11 +17,11 @@ const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "
 export default function CityDispatchCase() {
   return <div className="academy-shell">
     <AcademyHeader />
-    <main className="academy-width academy-workspace academy-editorial academy-article">
-      <SeoBreadcrumbs entries={[{ name: siteName, path: "/" }, { name: "Claude exam practice", path: certificationCatalog.path }, { name: "Architect Foundations", path: trackHref(track) }, { name: "City Dispatch case", path: dispatchCasePage.path }]} />
+    <main id="academy-main" tabIndex={-1} className="academy-width academy-workspace academy-editorial academy-article">
+      <SeoBreadcrumbs entries={[{ name: siteName, path: "/" }, { name: "Claude exam practice", path: certificationCatalog.path }, { name: "Architect Foundations", path: trackHref(track) }, { name: "City Dispatch mission", path: dispatchCasePage.path }]} />
       <header className="academy-workspace-title">
-        <h1>City Dispatch case study on Claude tool reliability</h1>
-        <p>An original Architect Foundations practice case. Diagnose a misleading order lookup, give the tool distinct outcomes, then compare how the policy handles the same simulated workload.</p>
+        <h1>City Dispatch mission: Claude tool reliability walkthrough</h1>
+        <p>An original Architect Foundations practice mission. Diagnose a misleading order lookup, give the tool distinct outcomes, then compare how the policy handles the same simulated workload.</p>
       </header>
       <section className="academy-panel">
         <h2>Read the failed lookup</h2>
@@ -59,7 +59,7 @@ export default function CityDispatchCase() {
         </div>
       </section>
       <section className="academy-panel academy-official">
-        <h2>Connect the case to the exam</h2>
+        <h2>Connect the mission to the exam</h2>
         <p>Use the debrief to practice structured tool errors and recovering from uncertain results.</p>
         <ExternalLink href={track.guide}>Official Architect Foundations exam guide</ExternalLink>
         <Link href={`${methodologyPage.path}#${track.id}`}>Architect Foundations objective map</Link>

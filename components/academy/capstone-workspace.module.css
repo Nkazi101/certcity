@@ -84,6 +84,16 @@
   --case-pattern: repeating-linear-gradient(120deg, transparent 0 15px, rgb(87 58 103 / .08) 15px 16px);
 }
 
+.editor[data-track="developer-professional"] {
+  --case-ink: #4a2f2a;
+  --case-accent: #7f3529;
+  --case-edge: #dcbfb7;
+  --case-pale: #f6e9e5;
+  --case-surface: #fcf7f5;
+  --case-detail: #9a4637;
+  --case-pattern: repeating-linear-gradient(0deg, transparent 0 15px, rgb(127 53 41 / .08) 15px 16px);
+}
+
 .editorHeader > button {
   margin: 0 0 9px;
 }
@@ -220,6 +230,11 @@
   overflow-wrap: anywhere;
 }
 
+.recordCode[data-format="code"] {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
 .recordId {
   margin-inline-start: 9px;
   color: var(--case-detail);
@@ -239,12 +254,17 @@
 
 .fields {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 13px;
   margin-top: 15px;
 }
 
-.fields label {
+.fields label,
+.field {
   display: grid;
+  /* Explicit minmax(0, 1fr): an implicit auto column grows to the widest line of the "Example format" <pre>
+     (white-space: pre) and spills the field past the form. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   min-width: 0;
 }
@@ -266,12 +286,24 @@
 
 .fields fieldset > div {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 9px;
 }
 
-.fields label > span {
+.fields label > span,
+.field > label {
   color: var(--case-accent);
   font-weight: 690;
+}
+
+.field > label.fileName {
+  font-family: var(--mono, monospace);
+  font-size: .9rem;
+  overflow-wrap: anywhere;
+}
+
+.fields > .field + .field {
+  margin-top: 14px;
 }
 
 .fields small {
@@ -299,13 +331,90 @@
   resize: vertical;
 }
 
-.fields [data-editor="json"] textarea {
-  min-height: 240px;
+.code {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #20342b;
+  border-radius: 6px;
   background: #20342b;
+}
+
+.gutter {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 10px 8px 10px 10px;
+  border-inline-end: 1px solid #3a5246;
+  color: #93ab9d;
+  font: .84rem/1.55 var(--mono, monospace);
+  text-align: right;
+  user-select: none;
+}
+
+.fields .code textarea {
+  min-width: 0;
+  padding: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: #f5fae9;
-  font-family: var(--mono, monospace);
-  font-size: .84rem;
+  font: .84rem/1.55 var(--mono, monospace);
+  white-space: pre;
+  overflow: auto;
   tab-size: 2;
+}
+
+.fields .code textarea:focus-visible {
+  outline-offset: -2px;
+}
+
+.example {
+  font-size: .82rem;
+}
+
+.example summary {
+  width: fit-content;
+  color: var(--case-accent);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.example pre {
+  max-height: 260px;
+  margin: 6px 0 2px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px dashed var(--case-edge);
+  border-radius: 5px;
+  background: var(--case-pale);
+  font: .78rem/1.5 var(--mono, monospace);
+  white-space: pre;
+}
+
+.results ul.problems {
+  display: block;
+  margin: 5px 0 0;
+  padding-inline-start: 18px;
+  list-style: disc;
+}
+
+.results ul.problems li {
+  margin: 3px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: .86rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.results li p.rule {
+  margin-top: 6px;
+  font-size: .82rem;
+  opacity: .92;
 }
 
 .editor :is(button, summary, input, textarea, select, a, [tabindex]):focus-visible {
@@ -552,7 +661,8 @@
   }
 
   .fields :is(input, textarea, select),
-  .fields [data-editor="json"] textarea,
+  .fields .code textarea,
+  .gutter,
   .run select {
     font-size: 1rem;
   }

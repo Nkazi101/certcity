@@ -63,7 +63,7 @@ export function CityGuidePractice({ mission, objective }: { mission: Mission; ob
       return <details key={id} className="conversation-file" open={objective === id || (!objective && index === 0) || undefined}>
         <summary>{heading}{progress.guide.includes(id) && <span> · Practiced</span>}</summary>
         <GuideDecision track={track} activity={activity} completed={progress.guide.includes(id)} onPractice={complete} />
-        <Link className="button button-outline" href={trackHref(track) + "?guide=" + decemberVersion + "&objective=" + id}>Try a different case in the Academy</Link>
+        <Link className="button button-outline" href={trackHref(track) + "?guide=" + decemberVersion + "&objective=" + id}>Try a different scenario in the Academy</Link>
       </details>;
     })}
     {notice && <p role="status">{notice}</p>}

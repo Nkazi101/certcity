@@ -20,9 +20,11 @@ const { caseworkFor, cityCasework } = require("../lib/claude/cases/index.ts");
 const { assignmentDebriefs } = require("../lib/claude/cases/debriefs.ts");
 const { missionExhibits, missionTransfer } = require("../lib/claude/mission-transfer.ts");
 const { workLayout } = require("../lib/claude/cases/layouts.ts");
-const { caseworkPassed, replayCasework, startingCase, validCaseDraft } = require("../lib/claude/casework.ts");
+const { caseworkPassed, deployedCase, isChoice, meetsKey, replayCasework, solvedCase, startingCase, validCaseDraft } = require("../lib/claude/casework.ts");
 const { places } = require("../lib/world.ts");
-const { missionMappings, missionPassed, stationOptions } = require("../lib/claude/missions.ts");
+const { caseOptionOrder, missionMappings, missionPassed, stationOptions } = require("../lib/claude/missions.ts");
+const { caseIndependent, saveCaseMastery, startCaseCycle } = require("../lib/claude/pathway.ts");
+const { packetFields, briefSections, runArchive, runKitchen, archiveBaseline, kitchenBaseline } = require("../lib/claude/assignment-work.ts");
 const { acknowledgeReview, missingExpertise, missionCompleted, missionFollowupQuestions, missionPreparationSteps, missionQuestions, missionsFor, missionStoragePrefix, portfolio, portfolioEvidence, readPortfolio, saveCityCasework, saveMission, saveMissionDebrief, saveMissionDraft, saveMissionFollowup, saveMissionInterview, saveTransfer, unmetMissions } = require("../lib/claude/pathway.ts");
 const { missionExperiences } = require("../lib/claude/mission-experiences.ts");
 const { sources } = require("../lib/claude/items.ts");
@@ -39,14 +41,30 @@ const { developerStudy } = require("../lib/claude/curriculum/developer.ts");
 const { professionalStudy } = require("../lib/claude/curriculum/professional.ts");
 const { bridges } = require("../lib/claude/curriculum/bridges.ts");
 const { capstoneEvidence, getCapstoneDefinition, initialCapstoneDraft, scoreCapstone, validCapstoneAttempt } = require("../lib/claude/capstones/index.ts");
-const { benchmarkEvidence, emptyReadiness, readReadiness, readinessKey, timedEvidence, updateReadiness } = require("../lib/claude/readiness.ts");
+const { emptyReadiness, readReadiness, readinessKey, updateReadiness } = require("../lib/claude/readiness.ts");
+const { benchmarkEvidence, timedEvidence } = require("../lib/claude/benchmark.ts");
 const { isProgressKey } = require("../lib/progress-storage.ts");
 const { solved } = require("./check-claude-capstones.cjs");
+const { publicGuides } = require("../lib/claude/public-guides.ts");
+
+// Public sample questions are the first items an expert sees. The key must not be guessable by length or wording.
+{
+  const samples = Object.values(publicGuides).flatMap(({ samples }) => samples);
+  const keyLongest = samples.filter(({ options, answer }) => {
+    const lengths = options.map((option) => option.length);
+    const max = Math.max(...lengths);
+    return lengths[answer] === max && lengths.filter((length) => length === max).length === 1;
+  }).length;
+  assert.ok(keyLongest <= samples.length * .4, `Public samples: key is uniquely longest in ${keyLongest}/${samples.length}`);
+  for (const { question, options } of samples) {
+    assert.ok(!options.some((option) => /^(only|just|declare)\b|\bunapproved\b/i.test(option)), `Public sample has a giveaway option: ${question}`);
+  }
+}
 
 const ids = new Set();
 const prompts = new Set();
 const delayedIds = new Set();
-assert.equal(tracks.length, 4);
+assert.equal(tracks.length, 5);
 for (const track of tracks) {
   const bank = banks[track.id];
   const objectives = track.domains.flatMap((domain) => domain.objectives.map((_, index) => `${domain.id}.${index + 1}`));
@@ -87,6 +105,8 @@ for (const track of tracks) {
   const attempt = { ...session, answers: Object.fromEntries(items.map((item) => [item.id, [...item.correct]])), submittedAt: 20_000 };
   assert.equal(followupDue([attempt]), 20_000 + 7 * 86400_000);
   assert.equal(domainEvidence(track, [attempt, { ...attempt, answers: {} }]).firstAnswers.size, 12);
+  // Answers saved against the pre-rewrite wording stay in history but are not evidence.
+  assert.equal(domainEvidence(track, [{ ...attempt, submittedAt: Date.parse("2026-11-20T00:00:00Z") }]).firstAnswers.size, 0);
   const nextItems = sessionItems(track, createSession(track, "mixed", null, false, [attempt], 30_000));
   assert.ok(nextItems.some((item) => !session.itemIds.includes(item.id)));
   assert.ok(items.every((item) => responseComplete(item, attempt.answers)));
@@ -167,7 +187,8 @@ function checkRehearsals() {
         const scored = form.filter(({ pilot }) => !pilot);
         const title = `${track.code} ${version} ${label}`;
         assert.equal(form.length, blueprint.count, `${title} item count`);
-        assert.equal(scored.length, version === decemberVersion ? 60 : blueprint.count, title);
+        // December guides and CCDV-P (guide v1.0) score 60 of 70 items; the others score every item.
+        assert.equal(scored.length, version === decemberVersion || track.id === "developer-professional" ? 60 : blueprint.count, title);
         if (track.id === "architect-foundations") assert.equal(new Set(form.map(({ scenario }) => scenario)).size, 4, `${title} shared scenarios`);
         const objectives = blueprint.domains.flatMap((domain) => domain.objectives.map((_, index) => `${domain.id}.${index + 1}`));
         assert.deepEqual(new Set(scored.map(({ objective }) => objective)), new Set(objectives), title);
@@ -401,8 +422,9 @@ function checkPreparation() {
       const covered = new Set(coverage.map(({ id }) => id));
       for (const stage of ["capstone", "transfer"]) {
         const definition = getCapstoneDefinition(track.id, version, stage);
-        assert.ok(!scenarios.has(definition.id), definition.id);
-        scenarios.add(definition.id);
+        // Hands-on labs are shared by both guide editions (criteria carry revisedObjectives), so ids are unique per edition.
+        assert.ok(!scenarios.has(`${version}:${definition.id}`), definition.id);
+        scenarios.add(`${version}:${definition.id}`);
         assert.ok(definition.criteria.every((item) => (revised ? item.revisedObjectives ?? item.objectives : item.objectives).every((code) => covered.has(code))), definition.id);
         const result = { ...scoreCapstone(track.id, version, stage, initialCapstoneDraft(definition)), id: `${definition.id}-check`, submittedAt: 10_000 };
         assert.ok(validCapstoneAttempt(result), definition.id);
@@ -423,7 +445,7 @@ function checkPreparation() {
       });
       const evidenceAttempts = [attempt, ...supplements];
       assert.ok(timedEvidence(track, version, evidenceAttempts)[0].met, track.code);
-      assert.equal(fresh.total, revised ? 60 : track.count, "unscored questions excluded from benchmark");
+      assert.equal(fresh.total, revised || track.id === "developer-professional" ? 60 : track.count, "unscored questions excluded from benchmark");
       assert.equal(timedEvidence(track, version, [{ ...attempt, priorExposure: [items[0].id] }])[0].met, false, "reuse is review evidence");
       assert.equal(timedEvidence(track, version, [{ ...attempt, priorExposure: undefined }])[0].met, false, "legacy exposure remains unknown");
       assert.equal(timedEvidence(track, version, [{ ...attempt, deadline: null }])[0].met, false, "untimed results cannot meet the benchmark");
@@ -438,8 +460,8 @@ function checkPreparation() {
     }
   }
   assert.equal(guided, revisedActivities.length);
-  assert.equal(scenarios.size, 14);
-  console.log(`${guided} revised guided objectives and ${scenarios.size} role-specific practical cases across four pathways`);
+  assert.equal(scenarios.size, 16);
+  console.log(`${guided} revised guided objectives and ${scenarios.size} role-specific practical cases across five pathways`);
 }
 
 function checkCasework() {
@@ -458,22 +480,19 @@ function checkCasework() {
         (layout.kind === "inbox" ? arrangedFields : layout.sections[0].fields.slice()).sort(), mission.id);
     }
     const base = startingCase(work);
-    assert.ok(validCaseDraft(work, base), mission.id);
+    assert.ok(Object.values(base).every((value) => value === null), `${mission.id} starts with every choice unset`);
+    assert.ok(validCaseDraft(work, base, true) && !validCaseDraft(work, base), mission.id);
     assert.equal(replayCasework(work, base).passed, false, mission.id);
-    assert.ok(work.references.length >= 2 && work.cases.length >= 2 && work.retest.requirements.length, mission.id);
+    const deployed = deployedCase(work);
+    assert.ok(validCaseDraft(work, deployed), `${mission.id} deployed setup is complete`);
+    assert.equal(replayCasework(work, deployed).passed, false, mission.id);
+    assert.ok(work.references.length >= 2 && work.cases.length >= 2 && work.retest.fields.length, mission.id);
     assert.deepEqual(new Set(work.objectives), new Set(missionMappings(mission).map(({ objective }) => objective)), mission.id);
-    const requirements = [...work.cases, work.retest].flatMap(({ requirements }) => requirements);
-    assert.ok(requirements.every(([id]) => Object.hasOwn(base, id)), mission.id);
-    const correct = Object.fromEntries(work.fields.map((field) => {
-      assert.ok(requirements.some(([id]) => id === field.id), field.id);
-      const candidates = "options" in field ? field.options :
-        Array.from({ length: field.max - field.min + 1 }, (_, index) => field.min + index);
-      const own = requirements.filter(([id]) => id === field.id);
-      return [field.id, candidates.find((value) => own.every((limit) =>
-        limit.length === 2 ? value === limit[1] : limit[1] === "atLeast" ? value >= limit[2] : value <= limit[2]))];
-    }));
+    const checked = new Set([...work.cases, work.retest].flatMap(({ fields }) => fields));
+    assert.ok(work.fields.every(({ id }) => checked.has(id)), `${mission.id} every field is checked by a replay`);
+    const correct = solvedCase(work);
     assert.ok(validCaseDraft(work, correct) && caseworkPassed(work, correct), mission.id);
-    const unexpected = { ...correct, [work.retest.requirements[0][0]]: {} };
+    const unexpected = { ...correct, [work.retest.fields[0]]: {} };
     assert.equal(validCaseDraft(work, unexpected), false, mission.id);
     assert.ok(missionCompleted(mission, { [mission.id]: { casework: correct } }, new Set()), mission.id);
     assert.equal(missionCompleted(mission, { [mission.id]: { caseDraft: correct } }, new Set()), false);
@@ -481,10 +500,122 @@ function checkCasework() {
   console.log(`${expected.length} rebuilt workbenches have valid samples, second cases and objective mappings.`);
 }
 
+// ---- BEGIN casework design checks (approachable but knowledge-requiring stations) ----
+// These keep the structural tells out of the casework stations: position and length cues, answers leaked by
+// hints, interviews or policy text, printed numeric answers, check-all checklists and unmapped objectives.
+const caseStop = new Set("with from that this each only into than then they them their there what when where which while will would about also have more most other over same some such these those under upon your been were does done just like very much many make made must should could".split(" "));
+function caseWords(text) {
+  return String(text).toLowerCase().replace(/[’']/g, "").split(/[^a-z0-9]+/).filter((word) => word.length > 3 && !caseStop.has(word));
+}
+/** Share of the key's content words found in a text, ignoring words already visible in the field label or station context. */
+function keyOverlap(key, text, context) {
+  const known = new Set(caseWords(context));
+  const words = [...new Set(caseWords(key))].filter((word) => !known.has(word));
+  if (!words.length) return 0;
+  const found = new Set(caseWords(text));
+  return words.filter((word) => found.has(word)).length / words.length;
+}
+const numberWords = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
+function printsNumber(text, value) {
+  const forms = [String(value), value.toLocaleString("en-US"), ...(value <= 20 ? [numberWords[value]] : [])];
+  return forms.some((form) => new RegExp(`(^|[^0-9a-z.,])${form.replace(/[.,]/g, "\\$&")}($|[^0-9a-z])`, "i").test(text));
+}
+const instruction = /^(give|use|track|keep|send|store|put|route|ask|set|choose|pick|move|add|remove|redact|compare|check|run|retry|join|correlate|upsert|replace|treat|place|separate|derive|expose|package|limit|start|answer|append|resume|version|fork|trace|measure|validate|interview|retrieve|reuse|return|deduplicate|show|name|record|apply|block|hold|escalate|mark|enforce|isolate|split|schedule|load|cache|translate|replay|index|brainstorm|extract|obtain|distinguish|preserve|include|attach|let|make|do|don’t|don't|never|always|avoid|only)\b/i;
+
+function caseworkBots(missionId, work) {
+  const pick = (choose) => Object.fromEntries(work.fields.map((field) => [field.id, isChoice(field) ? choose(field) : work.deployed[field.id]]));
+  const strategies = [["longest option", pick((field) => [...field.options].sort((a, b) => b.value.length - a.value.length)[0].value)]];
+  for (let cycle = 0; cycle < 3; cycle++) {
+    for (const [name, position] of [["second option", 1], ["first option", 0], ["last option", -1]]) {
+      strategies.push([`${name} (cycle ${cycle})`, pick((field) => field.options[caseOptionOrder(missionId, field.id, cycle, field.options.length).at(position)].value)]);
+    }
+  }
+  return strategies.filter(([, draft]) => caseworkPassed(work, draft)).map(([name]) => name);
+}
+
+function checkCaseworkDesign() {
+  const totals = { fields: 0, keyLongest: 0, positions: {}, numbers: 0, printed: 0, botPasses: 0 };
+  for (const track of tracks) {
+    let fields = 0;
+    let keyLongest = 0;
+    for (const mission of missionsFor(track.id)) {
+      const work = caseworkFor(mission.id);
+      if (!work) continue;
+      const replies = (missionExperiences[mission.id]?.interviews ?? []).map(({ reply }) => reply);
+      const policy = work.references.filter((reference) => reference[2] === "policy").map(([, content]) => content).join(" ");
+      const brief = [work.brief.move, ...work.brief.success].join(" ");
+      const printed = [work.opening, work.task, work.brief.problem, brief, ...replies,
+        ...work.references.map(([name, content]) => `${name} ${content}`), ...[...work.cases, work.retest].map(({ name, evidence }) => `${name} ${evidence}`)].join("\n");
+      for (const objective of work.objectives) {
+        assert.ok(work.fields.some((field) => field.objective === objective), `${mission.id} claims ${objective} without a field that practices it`);
+      }
+      assert.ok(work.prebrief.concept.trim() && work.prebrief.terms.length >= 2 && work.prebrief.contrast.good && work.prebrief.contrast.bad, `${mission.id} pre-brief`);
+      assert.ok(work.brief.success.length, `${mission.id} observable success criteria`);
+      for (const fixture of [...work.cases, work.retest]) assert.ok(fixture.symptom.trim() && fixture.diagnosis.trim(), `${mission.id} ${fixture.name} symptom and diagnosis`);
+      for (const reply of replies) {
+        for (const sentence of reply.split(/(?<=[.!?])\s+/)) assert.ok(!instruction.test(sentence.trim()), `${mission.id} interview states facts, not instructions: ${sentence}`);
+      }
+      for (const field of work.fields) {
+        assert.ok(work.objectives.includes(field.objective), `${mission.id}.${field.id} objective`);
+        assert.ok(["nudge", "concept", "worked"].every((rung) => field.hints[rung].trim()), `${mission.id}.${field.id} hint ladder`);
+        assert.equal(meetsKey(field, work.deployed[field.id]), false, `${mission.id}.${field.id} deployed value is wrong`);
+        if (!isChoice(field)) {
+          totals.numbers++;
+          if (typeof field.key === "number" && !field.transcription) {
+            const leaked = printsNumber(printed, field.key) || printsNumber(field.hints.nudge, field.key);
+            if (leaked) totals.printed++;
+            assert.ok(!leaked, `${mission.id}.${field.id} prints its numeric answer ${field.key}`);
+          }
+          continue;
+        }
+        fields++;
+        const values = field.options.map(({ value }) => value);
+        assert.ok(values.length >= 3 && new Set(values).size === values.length, `${mission.id}.${field.id} has at least three distinct options`);
+        const lengths = values.map((value) => value.length);
+        assert.ok(Math.max(...lengths) <= Math.min(...lengths) * 1.5, `${mission.id}.${field.id} option lengths within 1.5×: ${values.join(" | ")}`);
+        const key = field.options.find(({ value }) => value === field.key);
+        assert.ok(key?.examTerm, `${mission.id}.${field.id} key names its exam term`);
+        assert.ok(field.options.every((option) => option.rationale.trim() && (option === key || option.misconception?.trim())),
+          `${mission.id}.${field.id} every distractor targets a misconception`);
+        if (field.options.every((option) => option === key || option.value.length < key.value.length)) keyLongest++;
+        const context = [field.label, work.station, work.opening, work.task].join(" ");
+        for (const [name, text] of [["directions", brief], ["interviews", replies.join(" ")], ["policy references", policy],
+          ["nudge", field.hints.nudge], ["concept", field.hints.concept], ["worked example", field.hints.worked]]) {
+          const share = keyOverlap(field.key, text, context);
+          assert.ok(share < .5, `${mission.id}.${field.id} key “${field.key}” shares ${Math.round(share * 100)}% of its words with the ${name}`);
+        }
+        const shown = caseOptionOrder(mission.id, field.id, 0, values.length).findIndex((index) => values[index] === field.key);
+        totals.positions[shown] = (totals.positions[shown] ?? 0) + 1;
+      }
+      const passes = caseworkBots(mission.id, work);
+      totals.botPasses += passes.length;
+      assert.deepEqual(passes, [], `${mission.id} passes without reading: ${passes.join(", ")}`);
+    }
+    assert.ok(keyLongest <= fields * .4, `${track.code} key is the longest option in ${keyLongest}/${fields} fields`);
+    totals.fields += fields;
+    totals.keyLongest += keyLongest;
+  }
+  const spread = Object.values(totals.positions);
+  assert.ok(Math.max(...spread) <= totals.fields * .4, `displayed key position is spread across options: ${JSON.stringify(totals.positions)}`);
+  // Lab checklists: ticking every box must fail.
+  for (const [name, items] of [["packet fields", packetFields], ["brief sections", briefSections]]) {
+    assert.ok(items.some(({ wrong }) => wrong) && items.some(({ wrong }) => !wrong), `${name} include a wrong item`);
+  }
+  const everyPacket = packetFields.map(({ id }) => id);
+  assert.equal(runArchive({ ...archiveBaseline, keepRegister: true, south: "maps", parallel: true, packets: { register: everyPacket, maps: everyPacket },
+    brief: briefSections.map(({ id }) => id) }).passes.some(Boolean) && runArchive({ ...archiveBaseline, keepRegister: true, south: "maps", parallel: true,
+    packets: { register: everyPacket, maps: everyPacket }, brief: briefSections.map(({ id }) => id) }).passes.slice(1).every(Boolean), false, "check-all archive packets");
+  assert.equal(runKitchen({ ...kitchenBaseline, typed: true, reconcile: true, trustPrinted: true }).passes[1], false, "check-all kitchen ledger");
+  assert.equal(runKitchen({ ...kitchenBaseline, typed: true, reconcile: true }).passes[1], true, "kitchen ledger without the distractor");
+  console.log(`Casework design · ${totals.fields} choice fields · key longest ${totals.keyLongest} · displayed key position ${JSON.stringify(totals.positions)} · ${totals.printed}/${totals.numbers} numeric answers printed · ${totals.botPasses} bot passes`);
+}
+// ---- END casework design checks ----
+
 checkPortfolios();
 checkRehearsals();
 checkFieldwork();
 checkCasework();
+checkCaseworkDesign();
 checkPreparation();
 
 async function storageChecks() {
@@ -530,19 +661,46 @@ async function storageChecks() {
     assert.equal(readProgress(track), null);
   }
   global.localStorage = window.localStorage;
+  // ---- BEGIN casework storage, mastery and legacy checks ----
   const bulletin = portfolio.find(({ id }) => id === "market-bulletin");
   const work = caseworkFor(bulletin.id);
   const baseline = startingCase(work);
-  const bulletinDraft = { hours: "8:30", cutoff: "8:00", staff: "Staff copy", send: "Publish" };
-  const corrected = { ...bulletinDraft, send: "Inez’s desk" };
+  const corrected = solvedCase(work);
+  const bulletinDraft = { ...corrected, send: "Publish now" };
   assert.equal(saveCityCasework(bulletin, baseline, true), null);
+  assert.ok((await saveCityCasework(bulletin, baseline)).saved, "an unset draft can be saved");
+  assert.deepEqual(readPortfolio()[bulletin.id].caseDraft, baseline);
   assert.ok(replayCasework(work, bulletinDraft).passed);
   assert.equal(saveCityCasework(bulletin, bulletinDraft, true), null, "the unseen case must meet the release policy");
   assert.ok((await saveCityCasework(bulletin, bulletinDraft)).saved);
   assert.deepEqual(readPortfolio()[bulletin.id].caseDraft, bulletinDraft);
+  await saveCaseMastery(bulletin, (mastery) => ({ ...mastery, runs: 4, firstRunPassed: false, hints: { send: 3 }, failures: { send: 3 } }));
   assert.ok((await saveCityCasework(bulletin, corrected, true)).saved);
   assert.deepEqual(readPortfolio()[bulletin.id].casework, corrected);
   assert.equal(readPortfolio()[bulletin.id].caseDraft, undefined);
+  const bulletinTrack = tracks.find(({ id }) => id === bulletin.track);
+  const sendObjective = work.fields.find(({ id }) => id === "send").objective;
+  let evidence = portfolioEvidence(bulletinTrack, readPortfolio(), new Set());
+  assert.ok(evidence.guided.has(sendObjective) && !evidence.applied.has(sendObjective), "a worked example makes the objective guided, not applied");
+  assert.ok(work.objectives.filter((objective) => objective !== sendObjective && caseIndependent(work, readPortfolio()[bulletin.id].mastery.credit, objective))
+    .every((objective) => evidence.applied.has(objective)));
+  await startCaseCycle(bulletin);
+  assert.equal(readPortfolio()[bulletin.id].mastery.cycle, 1, "a fresh attempt reshuffles with the next cycle");
+  assert.deepEqual(readPortfolio()[bulletin.id].casework, corrected, "a fresh attempt keeps the saved outcome");
+  await saveCaseMastery(bulletin, (mastery) => ({ ...mastery, runs: 2, firstRunPassed: true, hints: { send: 1 } }));
+  assert.ok((await saveCityCasework(bulletin, corrected, true)).saved);
+  evidence = portfolioEvidence(bulletinTrack, readPortfolio(), new Set());
+  assert.ok(evidence.applied.has(sendObjective) && !evidence.guided.has(sendObjective), "an independent later attempt earns applied credit");
+  // Saves from before the redesign keep their completion and full credit.
+  const enrollmentMission = portfolio.find(({ id }) => id === "enrollment-replies");
+  stored.set(missionStoragePrefix + enrollmentMission.id, JSON.stringify({ casework: { date: "May 24", pending: "Mark pending", late: "Hold for lead" } }));
+  const legacyRecord = readPortfolio()[enrollmentMission.id];
+  assert.ok(missionCompleted(enrollmentMission, readPortfolio(), new Set()), "a legacy casework save stays complete");
+  assert.equal(legacyRecord.mastery, undefined);
+  assert.ok(caseworkFor(enrollmentMission.id).objectives.every((objective) =>
+    portfolioEvidence(tracks.find(({ id }) => id === enrollmentMission.track), readPortfolio(), new Set()).applied.has(objective)), "legacy saves count as applied");
+  stored.delete(missionStoragePrefix + enrollmentMission.id);
+  // ---- END casework storage, mastery and legacy checks ----
   const mission = missionsFor("architect-foundations").find((entry) => entry.id === "library-search");
   const [first, ...rest] = mission.decisions;
   const draftChoices = { [first.objective]: [1] };

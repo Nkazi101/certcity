@@ -24,7 +24,7 @@ async function findTrack({ params }: Props) {
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const track = await findTrack(props);
-  return pageMetadata({ path: trackHref(track), title: `${trackTitle(track)} Exam Practice`, description: trackDescriptions[track.id] });
+  return pageMetadata({ path: trackHref(track), title: `${trackTitle(track)} exam practice`, description: trackDescriptions[track.id] });
 }
 
 export default async function TrackPage(props: Props) {

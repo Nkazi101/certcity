@@ -1,9 +1,6 @@
 import { isCorrect } from "../certification-progress";
-import { associateBank } from "./associate";
-import { developerBank } from "./developer";
-import { architectBank } from "./architect";
-import { professionalBank } from "./professional";
 import type { PracticeBank, PracticeItem } from "./items";
+import { answeredBeforeRelease } from "./items";
 import { examMinutes } from "./blueprints";
 import { reassessmentMinutes, rehearsalFormIds, rehearsalItems, savedRecoveryItems, selectReassessment } from "./assessment/forms";
 import type { RehearsalForm } from "./assessment/forms";
@@ -14,12 +11,8 @@ import { revisedPracticeBanks } from "./curriculum/revised-practice";
 import { createRehearsalSnapshot } from "./rehearsal-snapshot";
 import type { RehearsalSnapshot } from "./rehearsal-snapshot";
 
-export const banks: Record<TrackId, PracticeBank> = {
-  "associate-foundations": associateBank,
-  "developer-foundations": developerBank,
-  "architect-foundations": architectBank,
-  "architect-professional": professionalBank,
-};
+import { banks } from "./banks";
+export { banks };
 
 export const practiceModes = ["mixed", "domain", "followup", "assessment", "reassessment"] as const;
 export type PracticeMode = (typeof practiceModes)[number];
@@ -84,6 +77,7 @@ export function domainEvidence(track: Track, attempts: readonly Attempt[], cityE
   const domainCounts = new Map<number, number>();
   for (const attempt of attempts) {
     if (attempt.mode !== "mixed" && attempt.mode !== "domain" || (attempt.version ?? "july-2026") !== version) continue;
+    if (answeredBeforeRelease(attempt.submittedAt)) continue;
     for (const entry of sessionItems(track, attempt)) {
       if (reviewed.has(entry.id) || !responseComplete(entry, attempt.answers)) continue;
       reviewed.add(entry.id);

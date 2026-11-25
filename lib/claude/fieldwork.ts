@@ -1,4 +1,6 @@
 import type { Choices } from "./missions";
+import { decodeSse as decodeFixture } from "../labs/engines/stream";
+import { retrieve } from "../labs/engines/retrieval";
 
 export const referenceSources = [
   { id: "faq", name: "Program FAQ · rev 6", detail: "Cancellation requires 24 hours’ notice. Owner: Public Programs." },
@@ -79,37 +81,8 @@ export type StreamWork = {
 };
 export const streamBaseline: StreamWork = { kind: "printworks-stream", decoder: "chunks", bridge: "buffer", rules: "personal" };
 
-function decodeFixture(chunks: readonly string[], decoder: StreamWork["decoder"]) {
-  let text = "";
-  let pending = "";
-  let stopped = false;
-  let failure = "";
-  const emitted: { chunk: number; text: string }[] = [];
-  for (const [position, chunk] of chunks.entries()) {
-    pending += chunk;
-    if (decoder === "buffer" && position < chunks.length - 1) continue;
-    const frames = pending.split("\n\n");
-    pending = decoder === "chunks" ? "" : frames.pop() ?? "";
-    for (const frame of frames) {
-      const data = frame.split("\n").find((line) => line.startsWith("data: "));
-      if (!data) continue;
-      try {
-        const event = JSON.parse(data.slice(6));
-        if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-          text += event.delta.text;
-          emitted.push({ chunk: position + 1, text: event.delta.text });
-        } else if (event.type === "message_stop") {
-          stopped = true;
-        } else if (event.type === "error") {
-          failure = event.error.type;
-        }
-      } catch {
-        // A partial event is unusable until its complete frame has arrived.
-      }
-    }
-  }
-  return { text, stopped, failure, emitted };
-}
+// The SSE decoder and the retrieval ranker live in the shared lab engine layer; re-exported for existing callers.
+export { decodeSse as decodeFixture } from "../labs/engines/stream";
 
 export function runStream(work: StreamWork) {
   const rows = streamFixtures.map((fixture) => {
@@ -162,25 +135,7 @@ export const retrievalBaseline: RetrievalWork = {
 };
 
 export function runRetrieval(work: RetrievalWork) {
-  const rows = retrievalQueries.map((query) => {
-    const candidates = documents.filter((doc) => (!work.activeOnly || doc.active) && (
-      (work.match !== "dense" && [doc.id.toLowerCase(), ...doc.words].some((term) => term === query.term)) ||
-      (work.match !== "lexical" && doc.concepts.some((term) => term === query.term))
-    ));
-    const rerank = work.rerank === "all" || (work.rerank === "flagged" && query.rerank);
-    if (rerank) {
-      const terms = new Set(query.text.toLowerCase().split(/\W+/).filter((term) => term.length > 3));
-      const overlap = (body: string) => body.toLowerCase().split(/\W+/).filter((term) => terms.has(term)).length;
-      candidates.sort((left, right) => overlap(right.body) - overlap(left.body));
-    }
-    const selected = candidates[0];
-    const indexMs = work.match === "hybrid" ? 61 : 44;
-    const rerankMs = rerank ? query.rerank ? 56 : 112 : 0;
-    const composeMs = 32;
-    const latency = indexMs + rerankMs + composeMs;
-    return { ...query, candidates, selected, rerank, indexMs, rerankMs, composeMs, latency,
-      correct: !!selected && selected.id === query.match && selected.active };
-  });
+  const rows = retrievalQueries.map((query) => retrieve(documents, query, work));
   const times = rows.map(({ latency }) => latency).sort((a, b) => a - b);
   const p95 = times[Math.ceil(times.length * .95) - 1];
   const hits = rows.filter(({ correct }) => correct).length;

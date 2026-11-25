@@ -1,5 +1,5 @@
 import type { TrackId } from "./blueprints";
-import { banks } from "./practice";
+import { banks } from "./banks";
 import { decision, workbench } from "./missions";
 import type { Decision, Mission } from "./missions";
 import { replayPilotGate, replaySchoolPilot, replayVendorImport } from "./workload";
@@ -21,7 +21,7 @@ function jobs(track: TrackId, entries: readonly Job[]) {
 export const associateMissions = jobs("associate-foundations", [
   {
     id: "market-bulletin", place: "market-hall", title: "Publish the vendor bulletin", brief: "Vendor updates mix confirmed hours with proposals. Inez needs a reliable Friday bulletin.",
-    specialist: "Compare the stall forms, the manager’s approval log, and last week’s draft.",
+    specialist: "Inez laid out the Signed hours sheet · Friday, the Form tray, the Dock B note, Last season’s bulletin and the Bulletin tool card.",
     stations: [
       ["1.1", "Set the writing brief", "Vendors need a short notice with confirmed hours. Two forms lack approved hours.", "Summarize all submitted changes", "Unapproved hours appear as confirmed.", "Specify audience, length, approved sources, and pending fields", "Vendors see confirmed hours and two pending entries.", "Match last week’s bulletin exactly", "Old hours carry forward."],
       ["1.2", "Sequence the work", "The draft should incorporate twenty forms and link each proposed change to its original form.", "Draft in one pass", "Three changes cannot be traced.", "Extract with form IDs, compare with approvals, then draft", "All included changes retain their source.", "Write the notice first and gather supporting forms later", "One omitted change stays invisible."],
@@ -43,7 +43,7 @@ export const associateMissions = jobs("associate-foundations", [
   },
   {
     id: "school-notice-pilot", place: "school", title: "Fix the school’s notice workflow", brief: "Families are getting inconsistent answers. Jordan wants a pilot with evidence of saved work.",
-    specialist: "The office can adjust its template and forms. Published policy and sign-off requirements stay fixed.", requires: ["enrollment-replies", "market-bulletin"], simulate: replaySchoolPilot,
+    specialist: "The office can change its reply prompt and its pilot report. The principal’s signed checklist stays fixed.", requires: ["enrollment-replies", "market-bulletin"], simulate: replaySchoolPilot,
     stations: [
       ["1.3", "Revise the tone", "A warmer draft dropped the verified missing-document list.", "Ask for a friendlier rewrite", "The list disappears again.", "Show a neutral example and require the verified list to remain", "Tone changes and the checklist survives.", "Replace the prompt with a friendly example", "The example’s facts are reused by mistake."],
       ["2.2", "Interpret feedback", "Thirty responses came from weekday-only families. The draft claims all families prefer the new hours.", "Publish the summary as written", "Weekend families are misrepresented.", "Limit the claim to weekday respondents and ask for weekend evidence", "The summary reflects the observed group.", "Estimate weekend preferences from past conversations", "The estimate is unsupported."],
@@ -63,8 +63,8 @@ export const associateMissions = jobs("associate-foundations", [
     ],
   },
   {
-    id: "kitchen-billing-audit", place: "restaurant", title: "Recover the weekly billing summary", brief: "Refunds disappeared after a vendor export changed. Lina also needs a cheaper and repeatable review process.",
-    specialist: "Use equivalent rows from both exports and the bookkeeping correction log.", requires: ["market-bulletin"],
+    id: "kitchen-billing-audit", place: "restaurant", title: "Recover the weekly billing summary", brief: "Refunds post as sales after the supplier changed its export. Lina also needs a cheaper summary that every clerk’s new chat runs the same way.",
+    specialist: "Arturo laid out order 27 in both exports, the Export B changelog, his correction note and standing instructions, Bea’s shift notes and the Cost trial.", requires: ["market-bulletin"],
     stations: [
       ["3.3", "Route routine and ambiguous records", "A cheaper model meets the target on routine mail. The tested ambiguity signal catches unusual messages.", "Use the highest-cost model for every record", "Routine work exceeds budget.", "Use the cheaper routine model and route flagged cases to staff", "Routine cost stays low and unusual cases receive review.", "Use the cheapest model and trust its category", "Ambiguous records are silently misclassified."],
       ["7.1", "Trace the missing refunds", "Refunds changed from negative amounts to positive values with type R.", "Switch models first", "The source change remains untested.", "Compare matched rows with the model and prompt pinned", "The mismatch is isolated to the new type field.", "Ask for a longer summary", "Refund handling does not change."],
@@ -73,7 +73,7 @@ export const associateMissions = jobs("associate-foundations", [
     ],
   },
   {
-    id: "community-policy", place: "community", title: "Protect applicants while reducing queue time", brief: "Malik wants help organizing applications and improving a slow referral process.",
+    id: "community-policy", place: "community", title: "Protect applicants while reducing queue time", brief: "Malik’s outgoing packet still carries applicants’ private details, forms stall on missing dates, and the desk’s rules let Claude settle the last training slot.",
     specialist: "The written rules require human award decisions, local redaction, and approval before connecting the mailbox.", requires: ["school-notice-pilot", "library-activity-kit"],
     stations: [
       ["4.2", "Find where cases wait", "Complete requests take a day. Forms missing dates take twice as long. Drafting is ten minutes.", "Optimize drafting speed only", "The dominant delay stays in place.", "Compare stage times for complete and incomplete cases", "The team identifies the missing-date bottleneck.", "Remove waiting from the metric", "The report hides the participant experience."],
@@ -87,8 +87,8 @@ export const associateMissions = jobs("associate-foundations", [
 
 export const developerMissions = jobs("developer-foundations", [
   {
-    id: "permit-agent", place: "old-courthouse", title: "Wire the permit intake agent", brief: "Acknowledgments sometimes go out before verification and tool results never reach the final turn.",
-    specialist: "The clerk saved one fixed-rule intake and a trace with two independent lookups.",
+    id: "permit-agent", place: "old-courthouse", title: "Wire the permit intake agent", brief: "An acknowledgment went out for an application that failed, and P-42’s lookup results reached Claude mixed up.",
+    specialist: "Imani saved P-42’s assistant turn with three lookups, the order they finished in, and the shared console’s last open session.",
     stations: [
       ["1.1", "Choose the intake flow", "Every application must pass address and eligibility validation, in that order, before drafting.", "Let an agent choose which checks to run", "An incomplete case skips eligibility.", "Run both fixed checks in code, then call Claude for the acknowledgment", "Every emitted draft follows the same validation path.", "Run the draft and both checks concurrently", "A draft is emitted before eligibility is known."],
       ["1.2", "Continue after the lookup", "The assistant emitted two tool_use calls and a preamble. Neither result is in history.", "Send the preamble as the final response", "The applicant sees no result.", "Append the assistant turn and both linked tool_result blocks", "Both results reach the next model turn.", "Append both results under one call ID", "One request remains unmatched."],
@@ -106,8 +106,8 @@ export const developerMissions = jobs("developer-foundations", [
     ],
   },
   {
-    id: "vendor-batch-api", place: "market-hall", title: "Separate live orders and the archive import", brief: "The vendor archive delays urgent confirmations, and retries are creating duplicate imports.",
-    specialist: "Inez has an interactive service deadline, a queued archive, and out-of-order batch results.", requires: ["supplier-invoices", "permit-agent"], simulate: replayVendorImport,
+    id: "vendor-batch-api", place: "market-hall", title: "Repair the overnight archive import", brief: "The archive batch misfiles results that come back out of order, imports orders twice on retry, and never reads the handbook from cache.",
+    specialist: "Dev has tonight’s three archive orders, their out-of-order provider outcomes, and the submit, import and scan-reading notes.", requires: ["supplier-invoices", "permit-agent"], simulate: replayVendorImport,
     stations: [
       ["2.3", "Choose a delivery mode for each queue", "Live acknowledgments are needed in six seconds. Archived rows are independent and can finish overnight.", "Batch both together", "The counter cannot rely on the six-second target.", "Use live Messages for the counter and Message Batches for the archive", "The two queues follow their own latency requirements.", "Process the archive synchronously ahead of the counter", "The counter waits behind bulk work."],
       ["2.4", "Make import retries idempotent", "Batch results can return in any order. Successful rows should survive retries.", "Append all results by return order", "Rows are misassigned and duplicates appear.", "Join by custom_id, upsert successes, retry eligible failures only", "The replay correlates each result and preserves completed rows.", "Retry the full batch without stable IDs", "Completed records are imported twice."],
@@ -116,8 +116,8 @@ export const developerMissions = jobs("developer-foundations", [
     ],
   },
   {
-    id: "library-workers", place: "library", title: "Scope workers and their catalog connectors", brief: "The writer is swamped by raw worker logs and each client implements the same catalog integration differently.",
-    specialist: "Reese can show access boundaries, an addressable reference document and a callable catalog search.", requires: ["permit-agent"],
+    id: "library-workers", place: "library", title: "Scope workers and their catalog connectors", brief: "The editor is buried in raw worker logs, an unfinished map search reads as complete, and the catalog server gives neither the reader app nor Claude the interface it needs.",
+    specialist: "Reese has this morning’s worker reports and the quarterly checklist; Ben Carter knows what the reader app and Claude need from the catalog server.", requires: ["permit-agent"],
     stations: [
       ["1.3", "Set worker context and handoff", "Workers search separate collections. The editor needs cited findings and missing coverage.", "Append all raw logs to the editor’s context", "Useful findings get buried.", "Isolate each collection and return compact cited findings with gaps", "The editor has the evidence needed for synthesis.", "Send only a confidence number", "The editor cannot tell which claims were verified."],
       ["6.1", "Project durable context", "The editor needs only accession, status and latest verification time for each case.", "Repeat the full transcript every turn", "Older entries keep competing with current facts.", "Carry verified fields and source references, retain raw logs elsewhere", "Relevant state remains compact and auditable.", "Drop history entirely", "The next turn loses confirmed details."],
@@ -126,8 +126,8 @@ export const developerMissions = jobs("developer-foundations", [
     ],
   },
   {
-    id: "repair-desk-safety", place: "shop", title: "Keep repair tools inside their authority", brief: "A draft assistant can post changes, and an offline supplier is shown as out of stock.",
-    specialist: "Sam provides permission rules, staging and production keys, and an MCP trace.", requires: ["permit-agent"],
+    id: "repair-desk-safety", place: "shop", title: "Keep repair tools inside their authority", brief: "A supplier form cancelled jobs, the scheduled job cancels without approval, a supplier outage reads as zero stock, and cleanup followed a symlink into another project.",
+    specialist: "Sam has the Approval ledger, today’s desk log and Supplier form SF-88; Gail’s notes cover the repair server, the desk sessions and the deployment.", requires: ["permit-agent"],
     stations: [
       ["7.1", "Handle supplier documents as data", "Third-party PDFs provide facts. Only signed-in staff can approve a send.", "Allow document instructions to direct sends", "Untrusted content influences a write.", "Label source text as untrusted and enforce staff authorization at send", "The document informs the draft without controlling release.", "Log unauthorized sends after the fact", "The write still occurs."],
       ["7.2", "Protect the shared write path", "The staff UI and a scheduled process use the same cancellation endpoint.", "Apply approval only in the staff UI", "The scheduler bypasses the rule.", "Require matching approval at the endpoint and use draft-only permissions upstream", "Both caller paths share the write gate.", "Audit cancellations nightly", "Unapproved cancellations still occur."],
@@ -137,8 +137,8 @@ export const developerMissions = jobs("developer-foundations", [
     ],
   },
   {
-    id: "developer-release", place: "office", title: "Release a safer application configuration", brief: "The new model route passed one hand-picked run. Staff need a credible release gate and prompt rollback.",
-    specialist: "Priya has labeled requests, two prompt revisions, and separate cost and quality data for routine and ambiguous inputs.", requires: ["printworks-stream", "vendor-batch-api"],
+    id: "developer-release", place: "office", title: "Release a safer application configuration", brief: "A new address prompt passed one notebook demo. Staff need a reproducible release gate, a working rollback and routing within budget.",
+    specialist: "Priya has the release record and contract; Simon’s routing trial has accuracy and cost per message for routine and correction messages.", requires: ["printworks-stream", "vendor-batch-api"],
     stations: [
       ["2.2", "Stage the prompt rollout", "Overall accuracy held, but address corrections regressed.", "Roll out globally and watch ticket volume", "The observed slice regression reaches all users.", "Pin both versions, test the affected slice and use a reversible rollout", "The release catches the failure and can switch back.", "Roll back the entire app for any prompt change", "Unrelated code and prompt changes remain coupled."],
       ["2.6", "Capture configuration for replay", "A previous run used a distinct model ID, prompt and settings.", "Record the model family alone", "The previous behavior cannot be reproduced.", "Record the resolved model ID, prompt version, settings and commit", "The on-call team can reconstruct the execution.", "Use the current settings for both runs", "Historical configuration disappears from the comparison."],
@@ -150,7 +150,7 @@ export const developerMissions = jobs("developer-foundations", [
 
 export const professionalMissions = jobs("architect-professional", [
   {
-    id: "public-permit-discovery", place: "old-courthouse", title: "Design a permit support pilot", brief: "The sponsor wants a chatbot. Staff spend most of their time asking applicants for missing attachments.",
+    id: "public-permit-discovery", place: "old-courthouse", title: "Design a permit support pilot", brief: "The sponsor wants a chatbot. Applicants wait longest in the hold tray for missing attachments.",
     specialist: "Interview support and publication owners. Review the workflow and compare the complete cost of two routes.",
     stations: [
       ["1.1", "Choose the first intervention", "Most of the six-day turnaround follows incomplete forms.", "Deploy a general FAQ bot", "The intervention has no effect on completeness.", "Test pre-submission completeness checks and measure total turnaround", "The pilot addresses the observed cause of delay.", "Automate final approval", "The proposal removes mandated review."],
@@ -172,8 +172,8 @@ export const professionalMissions = jobs("architect-professional", [
     ],
   },
   {
-    id: "professional-eval-gate", place: "office", title: "Build the pilot’s evaluation gate", brief: "A candidate improves handle time but fails more disputed and uncommon requests.",
-    specialist: "Priya can replay labeled cases, assign reviewers, and expose five percent of eligible tickets.", requires: ["support-pilot", "public-permit-discovery"], simulate: replayPilotGate,
+    id: "professional-eval-gate", place: "office", title: "Build the pilot’s evaluation gate", brief: "A candidate improves handle time but fails more appeals, new supplier forms and small-organization applications.",
+    specialist: "Frank’s labelled corpus covers each known failure; Priya’s promotion rules set the bars, and the canary feed replays last week’s traffic.", requires: ["support-pilot", "public-permit-discovery"], simulate: replayPilotGate,
     stations: [
       ["4.1", "Choose operational metrics", "Sponsors need speed, service quality and real cost, including escalations.", "Track tokens and sessions", "The dashboard cannot show correct resolutions.", "Track accuracy, escalation errors, p95 and cost per resolution", "The gate sees quality, cost and service performance together.", "Use confidence and total monthly spend", "Confidence is unvalidated and total spend moves with volume."],
       ["4.2", "Choose grading methods", "Required fields are exact. Grounding and handoff usefulness require judgment.", "Use exact text matching for everything", "Equivalent helpful handoffs fail.", "Automate exact checks and calibrate human review on grounding and handoffs", "Review time targets qualities exact checks cannot assess.", "Use complaints as the evaluation set", "Silent failures are missing."],
@@ -183,7 +183,7 @@ export const professionalMissions = jobs("architect-professional", [
     ],
   },
   {
-    id: "market-scale", place: "market-hall", title: "Control context and inference cost", brief: "A multi-team vendor service is exceeding its token budget. Similar cases also need consistent treatment.",
+    id: "market-scale", place: "market-hall", title: "Control context and inference cost", brief: "The vendor-review service’s spend spiked with a new build, and a signed waiver is being filed as a missing document.",
     specialist: "Inez has repeated policy prefixes, variable request metadata, and held-out examples of missing and waived fields.", requires: ["library-retrieval-architecture"],
     stations: [
       ["2.1", "Choose a candidate inside all limits", "A achieves 95% at $0.01 and 1.6 s p95. B achieves 98% at $0.04 and 2.8 s. Targets are 94%, $0.02, and under 2 s.", "Use B for all traffic", "It misses both operating limits.", "Pilot A and monitor all three metrics on representative traffic", "The candidate meets the observed envelope.", "Call both models for every ticket", "Cost and tail time rise."],
@@ -195,17 +195,17 @@ export const professionalMissions = jobs("architect-professional", [
   },
   {
     id: "tenant-tools", place: "shop", title: "Share a service without sharing customer records", brief: "Three assistants need a common lookup. Current agents receive every tool, including tools for unrelated records and writes.",
-    specialist: "Sam supplies service identities, authorized tenant scope, and an existing nightly bulk API.", requires: ["public-permit-discovery"],
+    specialist: "Sam supplies the assistant contracts; Gail’s identity notes cover the verified token, and the nightly parts file already has a versioned bulk endpoint.", requires: ["public-permit-discovery"],
     stations: [
-      ["3.1", "Limit the triage tool surface", "Triage needs four read capabilities; its current 40 include payroll and updates.", "Hide unused tools in the UI only", "The model can still call them.", "Expose required read tools and enforce the scope at the service", "The tool list and execution authority match the role.", "Rename tools without changing scope", "Unnecessary authority remains."],
+      ["3.1", "Limit the triage tool surface", "Triage needs four read capabilities; the shared catalog gives it all 19, including payroll and updates.", "Hide unused tools in the UI only", "The model can still call them.", "Expose required read tools and enforce the scope at the service", "The tool list and execution authority match the role.", "Rename tools without changing scope", "Unnecessary authority remains."],
       ["3.2", "Derive tenant scope from identity", "The search service identity can read all tenants. Users must only receive their tenant’s snippets.", "Retrieve globally and filter in the prompt", "Other tenant content has already entered model context.", "Carry verified scope and filter in the search service", "The worker receives only records it may read.", "Trust the tenant supplied by the browser", "A signed-in user can name another tenant."],
       ["3.7", "Keep suitable integrations", "Three assistants need permissioned lookup. The nightly CSV transfer has a reliable existing API.", "Move the CSV transfer into an agent conversation", "Deterministic bulk transfer becomes coupled to model execution.", "Share the lookup through MCP and leave bulk transfer on the existing API", "Each workload retains an appropriate interface.", "Build three separate copies of the same lookup", "Policy and implementation can drift independently."],
       ["3.8", "Discover capabilities when needed", "Tool choices differ by task family. The authorized capability matrix is already available.", "Include all tool schemas each turn", "Token cost and selection errors persist.", "Discover authorized tools by task and measure routing and tokens", "Each turn receives a smaller relevant surface.", "Discover globally and enforce scope after execution", "Unauthorized results can be exposed before enforcement."],
     ],
   },
   {
-    id: "community-controls", place: "community", title: "Put approval and privacy controls into production", brief: "Draft recommendations are useful, but disputed actions need staff decisions and the diagnostic pipeline retains too much.",
-    specialist: "The governance owner provided a retention plan, mandatory approvals, and failure examples.", requires: ["tenant-tools", "professional-eval-gate"],
+    id: "community-controls", place: "community", title: "Put approval and privacy controls into production", brief: "The assistant is about to get write access, and its controls let stale or forged approvals through, copy case text into diagnostics, and report outages as empty results.",
+    specialist: "Nina Patel brought the retention map and two supplier lookup results; the approval ledger, the pending writes and the Data and approval policy are on the desk.", requires: ["tenant-tools", "professional-eval-gate"],
     stations: [
       ["2.2", "Separate policy from evidence", "External attachments may contain instructions. The assistant can propose account changes.", "Treat all retrieved text as system instructions", "External content gains application authority.", "Label untrusted data and verify each write at the service", "Evidence can inform drafts without granting action authority.", "Let a document’s claim of approval authorize updates", "No trusted approval has been verified."],
       ["5.1", "Enforce review before writes", "All changes require an operator; sensitive accounts require a second approval.", "Confirm only the first change per session", "Later changes skip their required approvals.", "Separate drafts from writes and verify matching approvals per action", "The control applies before every change.", "Audit all changes the next morning", "The changes happen before review."],
@@ -216,7 +216,7 @@ export const professionalMissions = jobs("architect-professional", [
   },
   {
     id: "regional-operations", place: "office", title: "Hand the service to operations", brief: "The implementation team is leaving. An outage must route work manually in ten minutes, and different teams need consistent release practices.",
-    specialist: "Priya’s handoff includes one outage replay and a permission regression from the previous release.", requires: ["market-scale", "community-controls"],
+    specialist: "Priya’s handoff includes trace W-19, the specialist and reviewer reports, the importer restart notes and the repository listing.", requires: ["market-scale", "community-controls"],
     stations: [
       ["1.2", "Deliver a scoped handoff", "Each specialist sees one source collection. The coordinator needs claims and unresolved conflicts.", "Give all workers a shared history", "Workers see unrelated collections.", "Return scoped claims with source IDs and conflicts to the coordinator", "Synthesis can resolve or disclose disagreements.", "Combine worker confidence scores", "The evidence and disagreements disappear."],
       ["1.4", "Dispatch only the specialists needed", "Routine tickets need one worker. Outages may need two. All workers on every ticket exceed budget.", "Run every specialist in parallel", "Latency may improve, but excess work remains.", "Dispatch by task and inspect coverage before synthesis", "The coordinator requests the missing expertise only when needed.", "Always use the cheapest worker", "Some cases lack the required evidence."],

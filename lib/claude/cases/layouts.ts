@@ -1,3 +1,4 @@
+import { developerProfessionalLayouts } from "./developer-professional";
 export type WorkSection = {
   title: string;
   fields: readonly string[];
@@ -27,7 +28,7 @@ const layouts: Record<string, WorkLayout> = {
     { field: "late", label: "Morgan", text: "Can the office accept an application after the deadline?" },
   ] },
   "market-bulletin": { kind: "desk", sections: [
-    draft("Vendor draft", 0, "hours", "cutoff"), draft("Staff instructions", 1, "staff"), section("Approval tray", "send"),
+    draft("Vendor draft", 0, "hours", "cutoff"), draft("Staff instructions", 1, "staff", "steps"), section("Approval tray", "send"),
   ] },
   "school-notice-pilot": { kind: "desk", sections: [
     draft("Notice", 0, "list", "scope"), section("Intake form", "form"), draft("Pilot report", 1, "net", "corrections"),
@@ -42,7 +43,7 @@ const layouts: Record<string, WorkLayout> = {
   ] },
   "community-policy": { kind: "redaction", sections: [
     section("Outgoing copy · A17", "address", "medical", "topic"),
-    section("Front desk and mailbox", "date", "mail", "award"),
+    section("Front desk and mailbox", "date", "mail", "award", "fairness"),
   ], arrivals: [
     { field: "address", label: "Address", text: "8 Birch" },
     { field: "medical", label: "Medical detail", text: "Synthetic report attached" },
@@ -106,7 +107,7 @@ const layouts: Record<string, WorkLayout> = {
     section("Application journey", "scope", "issue", "status"), section("Cost comparison", "a"), section("Sponsor decision", "rollout"),
   ] },
   "professional-eval-gate": { kind: "review", sections: [
-    section("Reviewer coverage", "layout", "equity", "grade"), section("Canary and promotion", "canary", "gate"),
+    section("Reviewer coverage", "layout", "equity", "grade"), section("Canary and promotion", "metrics", "canary", "gate"),
   ] },
   "market-scale": { kind: "console", sections: [
     section("Pilot route", "model"), section("Assemble the request", "prefix", "active"), section("Comparison run", "example", "counter"),
@@ -123,6 +124,7 @@ const layouts: Record<string, WorkLayout> = {
     section("First ten minutes", "page", "queue", "investigate"), section("Handoff to the next shift", "packet", "source", "resume"),
     section("Release follow-through", "extension", "issue"),
   ] },
+  ...developerProfessionalLayouts,
 };
 
 export function workLayout(id: string): WorkLayout {

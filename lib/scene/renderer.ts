@@ -9,6 +9,16 @@ import { districtCamera } from "./districts";
 import type { DistrictId } from "./districts";
 import type { Landmark, MissionRoomReplay } from "./sites";
 import { roomAtmosphere } from "./room-architecture";
+import { createWorldFx } from "./world-fx";
+import { createSkyState, localHour, orientSun, presetHours, realSecondsPerWorldHour, sampleSky, timeLabel } from "./sky";
+import type { TimeMode } from "./sky";
+import { createProgressMarkers, glowTexture } from "./progress-markers";
+import type { SceneProgress } from "./progress-markers";
+import { createAmbientLife } from "./ambient-life";
+
+export type { TimeMode } from "./sky";
+export type { SceneProgress, PlaceState } from "./progress-markers";
+export type WorldAmbience = { mode: TimeMode; hour: number; night: number; label: string; district: DistrictId; calm: boolean };
 
 export type { MissionRoomReplay } from "./sites";
 export type SceneKind = "city" | "depot" | "mission";
@@ -19,12 +29,40 @@ export type WorldControls = {
   focusDistrict: (id: DistrictId, keepView?: boolean) => void;
   focusOliveStreet: () => void;
   setWorkload: (hours: number) => void;
+  /**
+   * Depot and rooms with a front desk (the school): the waiting line, ✓ walk-outs, "!" callbacks on the bench with its
+   * lamp, and an optional held person. `frame: true` moves the camera onto the desk and bench on phones.
+   */
+  setRoomReaction: (state: import("./room-reactions").RoomReaction | null) => void;
+  /** Any room: a ✓ ("passed") or "!" ("failed") badge over a station or its person; null clears it. Returns false if the room has no such station. */
+  setStationOutcome: (stationId: string, outcome: import("./room-reactions").StationOutcome) => boolean;
+  /** @deprecated Use setRoomReaction. */
+  setShiftScene: (state: import("./room-reactions").RoomReaction | null) => void;
   setAssignmentComplete: (complete: boolean) => void;
   setMissionReplay: (replay: MissionRoomReplay | null, preview?: HTMLCanvasElement | null) => void;
   refreshMarkers: () => void;
   select: (id: string | null, fromMarker?: boolean) => void;
+  /** City only: reflect saved learner progress on buildings and the skyline. */
+  setProgress: (progress: SceneProgress) => void;
+  /** City only: follow local time ("auto") or hold a preset light. */
+  setTimeMode: (mode: TimeMode) => void;
+  /** Ease the world into a quieter state while a panel or dialog holds the learner's attention. */
+  setCalm: (calm: boolean) => void;
+  ambience: () => WorldAmbience;
   dispose: () => void;
 };
+
+const toneMapping = THREE.NeutralToneMapping;
+
+/** Phones, tablets and small or low-core machines get fewer particles, no flock and a smaller shadow map. */
+function lowPowerDevice() {
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  return window.matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4 || memory <= 4 ||
+    window.innerWidth < 700;
+}
+
+/** Longest the first view waits on its art after the first frame is drawn (ms). */
+const firstViewWait = 1500;
 
 export function mountWorld(
   host: HTMLElement,
@@ -34,6 +72,7 @@ export function mountWorld(
   onSelect: (id: string, action?: "talk") => void,
   onContextState: (available: boolean) => void,
   missionRoom?: MissionRoom,
+  onFirstView?: () => void,
 ): WorldControls {
   const city = kind === "city";
   const depot = kind === "depot";
@@ -44,10 +83,13 @@ export function mountWorld(
   canvas.className = "world-canvas";
   canvasRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
   canvasRenderer.outputColorSpace = THREE.SRGBColorSpace;
-  canvasRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  canvasRenderer.toneMapping = toneMapping;
+  const lowPower = lowPowerDevice();
   canvasRenderer.toneMappingExposure = city ? 1.04 : atmosphere ? 1.03 : 1.07;
   canvasRenderer.shadowMap.enabled = true;
-  canvasRenderer.shadowMap.autoUpdate = !city;
+  // Shadows are re-rendered on demand everywhere: the city when the light or view moves far enough, rooms when their
+  // people move (at a reduced rate, since the room itself never changes).
+  canvasRenderer.shadowMap.autoUpdate = false;
   canvasRenderer.shadowMap.type = THREE.PCFShadowMap;
   host.append(canvas);
 
@@ -60,15 +102,18 @@ export function mountWorld(
   bounce.position.set(24, 16, -25);
   if (city) lightCity(scene, ambient, sun);
   const sunOffset = sun.position.clone();
+  const sunBase = sun.position.clone();
   function setDistrictLight(district: DistrictId) {
     const northFacing = district === "delmar" || district === "forest-park";
     if (district === "riverfront") {
-      sunOffset.set(-42, 36, -22);
+      sunBase.set(-42, 36, -22);
       sun.color.set("#ffd2a5");
     } else {
-      sunOffset.set(-37, 44, northFacing ? -36 : 29);
+      sunBase.set(-37, 44, northFacing ? -36 : 29);
       sun.color.set(northFacing ? "#ffdeb3" : "#ffdcaa");
     }
+    sunOffset.copy(sunBase);
+    skyHour = NaN;
     shadowsDirty = true;
   }
   sun.castShadow = true;
@@ -78,7 +123,7 @@ export function mountWorld(
   sun.shadow.camera.top = shadowSize;
   sun.shadow.camera.bottom = -shadowSize;
   sun.shadow.camera.far = 115;
-  sun.shadow.mapSize.setScalar(window.innerWidth < 670 ? 1024 : 2048);
+  sun.shadow.mapSize.setScalar(lowPower ? 1024 : 2048);
   sun.shadow.normalBias = .026;
   sun.shadow.bias = -.00031;
   sun.shadow.radius = city ? 2.7 : 2.1;
@@ -86,8 +131,25 @@ export function mountWorld(
   if (!city) scene.add(bounce);
 
   const kit = new ModelKit(city);
+  // Phones and low-power machines build a leaner city: fewer crowds and small props, stand-in figures, no wheel rigs.
+  kit.lean = lowPower;
+  if (city) {
+    // All moving actors' contact shadows share one instanced draw, re-placed after world matrices update.
+    scene.add(kit.actorShadowLayer);
+    scene.onBeforeRender = () => kit.syncActorShadows(scene);
+  }
   let dirty = true;
   let shadowsDirty = true;
+  // Time of day (city only). One curve drives sun, sky, fog, exposure and window glow.
+  const sky = createSkyState();
+  let timeMode: TimeMode = "auto";
+  const clockStart = performance.now();
+  const startHour = localHour();
+  let shownHour = startHour;
+  let skyHour = NaN;
+  const lastShadowSun = new THREE.Vector3();
+  let calm = false;
+  let fxTime = 0;
   if (city) setDistrictLight(initialDistrict);
   let ready = false;
   let frameId = 0;
@@ -103,11 +165,26 @@ export function mountWorld(
   }
   const artKey = city ? "oliveArt" : "depotArt";
   if (kind !== "mission") host.dataset[artKey] = "loading";
+  // The first view is held back until it is worth showing: a real frame with the scene's own art in it, rather than an
+  // empty canvas or placeholder shapes that models replace a moment later. Rooms have no separate art to wait for.
+  let artSettled = kind === "mission";
+  let compiling = 0;
+  let firstFrameAt: number | null = null;
+  let viewShown = false;
   const onArtState = (state: "ready" | "fallback") => {
     host.dataset[artKey] = state;
+    artSettled = true;
     invalidate(true);
   };
-  const environment = city ? buildCity(kit, scene, onArtState, () => invalidate(true))
+  const fx = createWorldFx();
+  let fxDirty = city;
+  const environment = city ? buildCity(kit, scene, (state) => {
+    fxDirty = city;
+    onArtState(state);
+  }, () => {
+    fxDirty = true;
+    invalidate(true);
+  })
     : depot ? buildDepot(kit, scene, onArtState)
       : buildMissionInterior(kit, scene, missionRoom ?? { kind: "office", room: "Assignment room" });
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, city ? 10 : .05, city ? 166 : 240);
@@ -145,6 +222,7 @@ export function mountWorld(
   let lastFrame = 0;
   let startTime: number | null = null;
   let lastActorTick = 0;
+  let shadowTick = 0;
   const shadowCenter = new THREE.Vector2(Infinity, Infinity);
   let scale = 1;
   let frameCost = 0;
@@ -162,6 +240,92 @@ export function mountWorld(
   outline.visible = false;
   outline.renderOrder = 2;
   scene.add(outline);
+  const markers = city ? createProgressMarkers(scene, environment.landmarks, fx) : null;
+  // Warm pools of light under street lamps after dark: one additive instanced decal for the whole city.
+  const poolMap = city ? glowTexture() : null;
+  const poolGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const poolMaterial = new THREE.MeshBasicMaterial({ map: poolMap, color: "#ffb866", transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2 });
+  const pools = city ? new THREE.InstancedMesh(poolGeometry, poolMaterial, 640) : null;
+  if (pools) {
+    pools.count = 0;
+    pools.frustumCulled = false;
+    pools.visible = false;
+    pools.renderOrder = 1;
+    scene.add(pools);
+  }
+  const poolMatrix = new THREE.Matrix4();
+  function syncPools() {
+    if (!pools) return;
+    const points = kit.lampPools;
+    const count = Math.min(points.length, 640);
+    if (count === pools.count) return;
+    for (let i = pools.count; i < count; i++) {
+      const { x, y, z } = points[i];
+      pools.setMatrixAt(i, poolMatrix.makeScale(3.6, 1, 3.6).setPosition(x, y + .045, z));
+    }
+    pools.count = count;
+    pools.instanceMatrix.needsUpdate = true;
+  }
+  const life = city ? createAmbientLife(scene, { birds: lowPower ? 0 : 12, leaves: lowPower ? 10 : 34 }) : null;
+  const flockFocus = (id: DistrictId, immediate = false) => {
+    const view = districtCamera(id, false);
+    life?.setFlockCenter(view.x - 3, view.z - 4, immediate);
+  };
+  flockFocus(initialDistrict, true);
+
+  function currentHour(now: number) {
+    if (timeMode !== "auto") return presetHours[timeMode];
+    return reducedMotion.matches ? startHour : startHour + (now - clockStart) / 1000 / realSecondsPerWorldHour;
+  }
+
+  function applySky(hour: number) {
+    sampleSky(hour, sky);
+    (scene.background as THREE.Color).copy(sky.background);
+    (scene.fog as THREE.Fog).color.copy(sky.fog);
+    ambient.color.copy(sky.sky);
+    ambient.groundColor.copy(sky.ground);
+    ambient.intensity = sky.ambient;
+    sun.color.copy(sky.sun);
+    sun.intensity = sky.sunIntensity;
+    sun.shadow.intensity = sky.shadow;
+    canvasRenderer.toneMappingExposure = sky.exposure;
+    orientSun(sunBase, sky, sunOffset);
+    fx.uniforms.fxNight.value = sky.night;
+    fx.uniforms.fxOccupancy.value = sky.occupancy;
+    markers?.setNight(sky.night);
+    poolMaterial.opacity = THREE.MathUtils.smoothstep(sky.night, .3, .95) * .5;
+    if (pools) pools.visible = poolMaterial.opacity > .01;
+    // Shadows are re-rendered on demand; refresh them once the light has moved a visible amount.
+    if (lastShadowSun.lengthSq() === 0 || lastShadowSun.angleTo(sunOffset) > .011) {
+      lastShadowSun.copy(sunOffset);
+      shadowsDirty = true;
+    }
+  }
+
+  function updateSky(now: number, delta: number) {
+    if (!city) return false;
+    const target = currentHour(now);
+    let step = ((target - shownHour) % 24 + 36) % 24 - 12;
+    if (reducedMotion.matches || Math.abs(step) < .002) shownHour = target;
+    else shownHour += step * Math.min(1, delta * 2.6);
+    step = Math.abs(((shownHour - skyHour) % 24 + 36) % 24 - 12);
+    if (!(step > .015) && !Number.isNaN(skyHour)) return false;
+    skyHour = shownHour;
+    applySky(shownHour);
+    return true;
+  }
+
+  let infoLogged = 0;
+  function logRenderInfo(reason: string) {
+    if (process.env.NODE_ENV === "production") return;
+    const { render, memory, programs } = canvasRenderer.info;
+    const summary = { reason, calls: render.calls, triangles: render.triangles, geometries: memory.geometries,
+      textures: memory.textures, programs: programs?.length ?? 0, lowPower };
+    (window as Window & { __certcityRender?: typeof summary }).__certcityRender = summary;
+    (window as Window & { __certcityWorld?: unknown }).__certcityWorld = { scene, renderer: canvasRenderer, camera };
+    console.info("[CertCity scene]", summary);
+  }
 
   function fitCamera() {
     const ratio = width / height;
@@ -193,11 +357,38 @@ export function mountWorld(
     }
     if (kind === "mission") widthMinimum = portrait ? 17.35 : 19.5;
     fitCamera();
+    if (kind === "depot") frameReaction();
     if (kind === "mission" && (selected || framing === "district")) frameMissionStation();
   }
 
+  // While a shift panel drives the room on a phone, the bottom sheet covers most of the screen: bring the desk, line
+  // and bench up close in the strip above it. Returns whether it framed.
+  let reactionFrame = false;
+  let reactionFramed = false;
+  function frameReaction() {
+    const focus = environment.reactionFocus;
+    reactionFramed = reactionFrame && !!focus && width <= 700;
+    if (!reactionFramed || !focus) return false;
+    desiredZoom = kind === "mission" ? 1.85 : 1.95;
+    // Centre the focus in the strip between the top controls and the sheet (which can take up to 62% of the screen).
+    // While a shift is open the depot's scene is taller than the screen and lifted above the sheet (globals.css);
+    // read that from layout sizes, since the lift animates as a transform.
+    const screen = host.closest<HTMLElement>(".game-world")?.clientHeight ?? window.innerHeight;
+    const lifted = Math.max(0, height - screen);
+    const stripTop = 120;
+    const stripBottom = Math.max(stripTop, screen * .38);
+    const focusY = (stripTop + stripBottom) / 2 + lifted;
+    const vertical = (height / 2 - focusY) * verticalSpan / height / desiredZoom;
+    target.copy(focus);
+    target.x += Math.sin(angle) * Math.sin(pitch) * vertical;
+    target.y -= Math.cos(pitch) * vertical;
+    target.z += Math.cos(angle) * Math.sin(pitch) * vertical;
+    invalidate();
+    return true;
+  }
+
   function frameMissionStation() {
-    if (kind !== "mission") return;
+    if (kind !== "mission" || frameReaction()) return;
     const open = host.parentElement?.dataset.stationOpen === "true";
     const point = open ? environment.landmarks.find(({ id }) => id === selected) : undefined;
     if (!point) {
@@ -407,10 +598,21 @@ export function mountWorld(
       angle = THREE.MathUtils.lerp(angle, desiredAngle, ease);
       pitch = THREE.MathUtils.lerp(pitch, desiredPitch, ease);
     }
-    const animate = !reducedMotion.matches && now - lastActorTick >= (!city && coarsePointer.matches ? 44 : 31);
+    // Calm mode pauses decorative motion; mission rooms keep animating because their replays are part of the lesson.
+    const animate = !reducedMotion.matches && (!calm || kind === "mission") && now - lastActorTick >= (lowPower || (!city && coarsePointer.matches) ? 44 : 31);
     if (moving) environment.cameraNear?.(cameraTarget.x, cameraTarget.z);
+    if (fxDirty) {
+      fxDirty = false;
+      fx.patchScene(scene);
+      syncPools();
+    }
+    if (updateSky(now, delta)) dirty = true;
     if (animate) {
       environment.update(elapsed);
+      fxTime += Math.min(now - lastActorTick, 100) / 1000;
+      fx.uniforms.fxTime.value = fxTime;
+      markers?.update(fxTime);
+      life?.update(fxTime, cameraTarget, sky.night);
       lastActorTick = now;
     }
     if (dirty || moving || animate) {
@@ -418,6 +620,9 @@ export function mountWorld(
         shadowCenter.set(Math.round(cameraTarget.x), Math.round(cameraTarget.z));
         sun.target.position.set(shadowCenter.x, 0, shadowCenter.y);
         sun.position.copy(sun.target.position).add(sunOffset);
+        canvasRenderer.shadowMap.needsUpdate = true;
+        shadowsDirty = false;
+      } else if (!city && (shadowsDirty || (animate && ++shadowTick % (lowPower ? 3 : 2) === 0))) {
         canvasRenderer.shadowMap.needsUpdate = true;
         shadowsDirty = false;
       }
@@ -429,6 +634,21 @@ export function mountWorld(
       dirty = false;
       canvasRenderer.render(scene, camera);
       captureReplay(cameraChanged, now);
+      if (!viewShown) {
+        if (firstFrameAt === null) {
+          firstFrameAt = now;
+          // Art that is slow or never arrives must not keep the city hidden: show what is there after a moment.
+          window.setTimeout(() => invalidate(), firstViewWait + 20);
+        }
+        if ((artSettled && !compiling) || now - firstFrameAt >= firstViewWait) {
+          viewShown = true;
+          onFirstView?.();
+        }
+      }
+      if (infoLogged < 2 && host.dataset[artKey] !== "loading" && elapsed > 2 + infoLogged * 6) {
+        infoLogged++;
+        logRenderInfo(infoLogged === 1 ? "ready" : "settled");
+      }
     }
     if (city && moving && sinceFrame < 95 && !reducedMotion.matches) adaptResolution(sinceFrame);
     if (moving || !reducedMotion.matches || dirty) schedule();
@@ -497,7 +717,7 @@ export function mountWorld(
       const opaque = (part: THREE.Material) => part.visible && part.depthWrite;
       if (Array.isArray(material) ? !material.some(opaque) : !opaque(material)) return;
       if (!(object instanceof THREE.SkinnedMesh)) {
-        const geometry = object instanceof THREE.InstancedMesh ? object : object.geometry;
+        const geometry = object instanceof THREE.InstancedMesh || object instanceof THREE.BatchedMesh ? object : object.geometry;
         if (!geometry.boundingBox) geometry.computeBoundingBox();
         occluderBounds.copy(geometry.boundingBox!).applyMatrix4(object.matrixWorld);
         if (!occluderBounds.containsPoint(ray.ray.origin)) {
@@ -635,8 +855,52 @@ export function mountWorld(
   environment.focusDistrict?.(initialDistrict);
   environment.cameraNear?.(target.x, target.z);
   environment.update(0);
-  ready = true;
-  schedule();
+  // Compile every shader before the first frame without blocking the main thread (KHR_parallel_shader_compile),
+  // and do the same for art that arrives later, before it becomes visible.
+  if (city) {
+    fx.patchScene(scene);
+    syncPools();
+    fxDirty = false;
+  }
+  pointCamera();
+  let disposed = false;
+  const precompile = ({ child }: { child: THREE.Object3D }) => {
+    // Wait for the code that added it to finish (it may still batch or hide parts) before hiding it to compile.
+    if (ready) queueMicrotask(() => {
+      if (disposed || child.parent !== scene || !child.visible) return;
+      if (city) fx.patchScene(child);
+      child.visible = false;
+      compiling++;
+      void canvasRenderer.compileAsync(child, camera, scene).catch(() => undefined).then(() => {
+        compiling--;
+        child.visible = true;
+        invalidate(true);
+      });
+    });
+  };
+  scene.addEventListener("childadded", precompile);
+  void canvasRenderer.compileAsync(scene, camera).catch(() => undefined).then(() => {
+    if (disposed) return;
+    ready = true;
+    schedule();
+  });
+
+  function applyRoomReaction(state: import("./room-reactions").RoomReaction | null) {
+    environment.setRoomReaction?.(state, reducedMotion.matches);
+    const frame = !!state?.frame;
+    if (frame !== reactionFrame) {
+      const wasFramed = reactionFramed;
+      reactionFrame = frame;
+      if (!frameReaction() && wasFramed) {
+        if (kind === "mission") frameMissionStation();
+        else {
+          target.set(0, .43, .25);
+          desiredZoom = 1;
+        }
+      }
+    }
+    invalidate(true);
+  }
 
   return {
     zoom: setZoom,
@@ -659,7 +923,10 @@ export function mountWorld(
     },
     focusDistrict(id, keepView = false) {
       if (!city) return;
-      if (district !== id) setDistrictLight(id);
+      if (district !== id) {
+        setDistrictLight(id);
+        flockFocus(id);
+      }
       district = id;
       environment.focusDistrict?.(id);
       if (keepView) {
@@ -674,11 +941,18 @@ export function mountWorld(
     },
     setWorkload(hours) {
       environment.setWorkload?.(hours);
-      invalidate();
+      invalidate(true);
     },
+    setRoomReaction: applyRoomReaction,
+    setStationOutcome(stationId, outcome) {
+      const shown = environment.setStationOutcome?.(stationId, outcome) ?? false;
+      invalidate();
+      return shown;
+    },
+    setShiftScene: applyRoomReaction,
     setAssignmentComplete(complete) {
       environment.setAssignmentComplete?.(complete);
-      invalidate();
+      invalidate(true);
     },
     setMissionReplay(replay, preview = null) {
       if (!environment.setMissionReplay) return;
@@ -692,7 +966,7 @@ export function mountWorld(
         capturedSettledReplay = false;
         environment.setMissionReplay(replay, reducedMotion.matches);
       }
-      invalidate();
+      invalidate(true);
     },
     refreshMarkers() {
       if (kind === "mission" && (selected || framing === "district")) frameMissionStation();
@@ -728,8 +1002,38 @@ export function mountWorld(
       }
       invalidate();
     },
+    setProgress(progress) {
+      if (markers?.set(progress)) {
+        fxDirty = true;
+        invalidate();
+      }
+    },
+    setTimeMode(mode) {
+      if (!city || mode === timeMode) return;
+      timeMode = mode;
+      invalidate(true);
+    },
+    setCalm(next) {
+      if (calm === next) return;
+      calm = next;
+      markers?.setCalm(next);
+      fx.uniforms.fxWind.value = next ? 0 : 1;
+      canvas.style.transition = reducedMotion.matches ? "none" : "filter .7s ease";
+      canvas.style.filter = next ? "saturate(.58) brightness(.86) contrast(.94)" : "";
+      invalidate();
+    },
+    ambience() {
+      return { mode: timeMode, hour: ((shownHour % 24) + 24) % 24, night: sky.night, label: timeLabel(timeMode, shownHour), district, calm };
+    },
     dispose() {
       ready = false;
+      disposed = true;
+      scene.removeEventListener("childadded", precompile);
+      markers?.dispose();
+      life?.dispose();
+      poolGeometry.dispose();
+      poolMaterial.dispose();
+      poolMap?.dispose();
       if (replayPreview) delete replayPreview.dataset.live;
       cancelAnimationFrame(frameId);
       observer.disconnect();

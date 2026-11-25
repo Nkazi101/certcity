@@ -36,10 +36,16 @@ jobs:
         run: npm run typecheck
       - name: Check assessment, content, and archived evidence
         run: npm run check:claude
-      - name: Check city routes and mission entry points
+      - name: Check that practice questions can't be answered by test-taking cues
+        run: node scripts/check-item-quality.cjs --enforce
+      - name: Check exam guide decisions can't be answered by test-taking cues
+        run: npm run check:guide
+      - name: Check city routes, daily shifts and today's work
         run: npm run check:city
       - name: Check progress recovery and conflict handling
         run: node scripts/check-progress-recovery.cjs
+      - name: Check study reminder emails match the current labs and links
+        run: npm run check:notifications
       - name: Build the Next.js application
         run: npm run build
       - name: Check the exported SEO metadata and crawl paths

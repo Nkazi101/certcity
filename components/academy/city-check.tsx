@@ -24,7 +24,7 @@ export function CitySkillCheck({ trackId, practiceHref, onSaved }: { trackId: Ci
 
   if (!shown) return (
     <button className="academy-button primary" type="button" onClick={reveal}>
-      {attempt ? "Review skill check" : "Try a new case"} <ArrowRight size={16} aria-hidden="true" />
+      {attempt ? "Review practice questions" : "Try a new scenario"} <ArrowRight size={16} aria-hidden="true" />
     </button>
   );
 
@@ -88,7 +88,7 @@ export function CitySkillCheck({ trackId, practiceHref, onSaved }: { trackId: Ci
               })}
             </fieldset>
           ))}
-          <button type="submit" className="academy-button primary" disabled={!complete}>Submit skill check <ArrowRight size={16} aria-hidden="true" /></button>
+          <button type="submit" className="academy-button primary" disabled={!complete}>Submit practice questions <ArrowRight size={16} aria-hidden="true" /></button>
         </form>
       )}
     </section>

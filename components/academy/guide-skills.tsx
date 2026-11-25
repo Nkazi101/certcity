@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowRight, Check, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { objectiveCoverage } from "../../lib/claude/curriculum";
 import { guideCityHref } from "../../lib/claude/curriculum/city-guide";
+import { guideChoices, guideRevision } from "../../lib/claude/curriculum/guide-options";
+import { QuestionReport } from "./question-report";
 import type { GuideActivity } from "../../lib/claude/curriculum/types";
 import type { Track } from "../../lib/claude/blueprints";
 import { decemberVersion } from "../../lib/claude/december-blueprints";
@@ -16,43 +18,53 @@ const responseLabels: Record<Track["id"], string> = {
   "developer-foundations": "Integration replay",
   "architect-foundations": "Workflow outcome",
   "architect-professional": "Operating consequence",
+  "developer-professional": "Production replay",
 };
 
 export function GuideDecision({ track, activity, completed, onPractice, onAdvance }: {
   track: Track; activity: GuideActivity; completed: boolean;
   onPractice: (objective: string) => Promise<boolean>; onAdvance?: () => void;
 }) {
-  const [objective, source, caseFile, change, comparison, effect, explanation, initialConsequence] = activity;
-  const [choice, setChoice] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+  const [objective, source, caseFile, , explanation] = activity;
+  const choices = useMemo(() => guideChoices(activity), [activity]);
+  const [choice, setChoice] = useState<number | null>(null);
+  const [result, setResult] = useState<number | null>(null);
+  const [tries, setTries] = useState(0);
   const [busy, setBusy] = useState(false);
-  const position = [...caseFile].reduce((hash, character) => Math.imul(hash ^ character.charCodeAt(0), 16777619), 2166136261);
-  const correctFirst = position % 2 === 0;
-  const choices = correctFirst ? [change, comparison] : [comparison, change];
   const [label] = sources[source];
-  return <form className="academy-activity" onSubmit={async (event) => {
+  const chosen = result === null ? undefined : choices[result];
+  return <><form className="academy-activity" onSubmit={async (event) => {
     event.preventDefault();
-    if (!choice) return;
+    if (choice === null) return;
     setResult(choice);
-    if (choice !== change || completed) return;
+    setTries((count) => count + 1);
+    if (!choices[choice].correct || completed) return;
     setBusy(true);
     await onPractice(objective);
     setBusy(false);
   }}>
     <fieldset className="academy-entry-question">
       <legend>{caseFile}</legend>
-      {choices.map((option) => <label key={option}><input type="radio" name={`guide-${objective}`} checked={choice === option} onChange={() => setChoice(option)} />{option}</label>)}
+      {choices.map(({ text }, index) => <label key={text}><input type="radio" name={`guide-${objective}`} checked={choice === index} onChange={() => setChoice(index)} />{text}</label>)}
     </fieldset>
-    <button type="submit" className="academy-button secondary" disabled={!choice || busy || choice === result}>Apply decision</button>
-    {result && <>
-      <div className="academy-activity-feedback" role="status" data-outcome={result === change ? "correct" : "review"}>
-        <strong>{responseLabels[track.id]}{result !== change && " · Needs revision"}</strong>
-        <p>{result === change ? effect : initialConsequence}</p>
+    <button type="submit" className="academy-button secondary" disabled={choice === null || busy || choice === result}>Apply decision</button>
+    {chosen && <>
+      <div className="academy-activity-feedback" role="status" data-outcome={chosen.correct ? "correct" : "review"}>
+        <strong>{responseLabels[track.id]}{chosen.correct ? tries > 1 && ` · Found on try ${tries}` : " · Needs revision"}</strong>
+        <p>{chosen.consequence}</p>
+        {!chosen.correct && <p>Read the scenario again and choose another decision.</p>}
       </div>
-      <div className="academy-activity-notes"><p>{explanation}</p><cite>{label}</cite></div>
-      {result === change && onAdvance && <button className="academy-button text" type="button" onClick={onAdvance}>Next case <ArrowRight size={16} aria-hidden="true" /></button>}
+      {chosen.correct && <div className="academy-activity-notes"><p>{explanation}</p>
+        <details><summary>What the other decisions lead to</summary>
+          <ul>{choices.filter(({ correct }) => !correct).map(({ text, consequence }) => <li key={text}><strong>{text}</strong><p>{consequence}</p></li>)}</ul>
+        </details>
+        <cite>{label}</cite></div>}
+      {chosen.correct && onAdvance && <button className="academy-button text" type="button" onClick={onAdvance}>Next scenario <ArrowRight size={16} aria-hidden="true" /></button>}
     </>}
-  </form>;
+  </form>
+  {/* Outside the decision form: the report control is its own form. */}
+  {chosen && <QuestionReport trackId={track.id} version={decemberVersion} itemId={`guide.${objective}`} revision={guideRevision(activity)} />}
+  </>;
 }
 
 export function GuideSkills({ track, practiced, onPractice, onTarget }: {
@@ -72,26 +84,26 @@ export function GuideSkills({ track, practiced, onPractice, onTarget }: {
     nextCase.querySelector("summary")?.focus({ preventScroll: true });
     nextCase.scrollIntoView({ block: "center" });
   }
-  return <section className="academy-panel academy-guide-skills" id="guide-skills" aria-labelledby="guide-skills-title" data-track={track.id}>
+  return <section className="academy-panel academy-guide-skills" id="guide-skills" tabIndex={-1} aria-labelledby="guide-skills-title" data-track={track.id}>
     <h2 id="guide-skills-title">December guide practice</h2>
-    <p>Apply a decision in each case and see the outcome. Use these cases to revisit domains before a timed rehearsal.</p>
+    <p>Apply a decision in each scenario and see the outcome. Use these scenarios to revisit domains before a timed practice exam.</p>
     <div className="academy-guide-domains">
       {domains.map(({ id, title, weight, skills }) => {
         const completed = skills.filter((skill) => practiced.has(skill.id)).length;
         return <details className="academy-domain" id={`december-domain-${id}`} key={id}>
-          <summary><span><strong>{title}</strong><small>{completed}/{skills.length} practiced</small></span><span className="academy-weight">{weight}%</span><ChevronDown size={17} aria-hidden="true" /></summary>
+          <summary><span><strong>{title}</strong><small>{completed}/{skills.length} practiced</small></span><span className="academy-weight" aria-label={`${weight}% of the exam`}>{weight}%</span><ChevronDown size={17} aria-hidden="true" /></summary>
           <ol className="academy-skill-list">
             {skills.map(({ id: objective, title: name, activity, missions }) => {
               const next = sequence[sequence.findIndex(({ id }) => id === objective) + 1];
               return <li key={objective}>
                 <details id={`guide-case-${objective}`} className="academy-guide-activity">
-                  <summary><span>{name}</span>{practiced.has(objective) && <Check size={17} aria-label="Practiced" />}</summary>
+                  <summary><span>{name}</span><span>{practiced.has(objective) && <Check size={17} aria-label="Practiced" />}<ChevronDown size={15} aria-hidden="true" /></span></summary>
                   {activity && <GuideDecision track={track} activity={activity} completed={practiced.has(objective)} onPractice={onPractice}
                     onAdvance={next && (() => advance(objective, next.id))} />}
                   <div className="academy-skill-actions">
                     {missions.map((mission) => <Link key={mission.id} className="academy-button secondary"
                       href={guideCityHref(track.id, mission.id, objective)}>Practice at {places.find(({ id }) => id === mission.place)?.name ?? mission.title} <ArrowRight size={15} aria-hidden="true" /></Link>)}
-                    <button type="button" className="academy-button text" onClick={() => onTarget(id, objective)}>Try a different case</button>
+                    <button type="button" className="academy-button text" onClick={() => onTarget(id, objective)}>Try a different scenario</button>
                   </div>
                 </details>
               </li>;

@@ -8,8 +8,8 @@ export const metadata = pageMetadata(helpPage);
 
 export default function StudyHelp() {
   return <div className="academy-shell">
-    <AcademyHeader />
-    <main className="academy-width academy-workspace">
+    <AcademyHeader current="help" />
+    <main id="academy-main" tabIndex={-1} className="academy-width academy-workspace">
       <header className="academy-workspace-title">
         <h1>{helpPage.title}</h1>
         <p>Keep a backup, recover work, or help us review a question from <Link href={certificationCatalog.path}>Claude exam practice</Link>.</p>
@@ -18,11 +18,11 @@ export default function StudyHelp() {
       <StudyEmailPreferences />
       <section className="academy-panel">
         <h2>Report a practice question</h2>
-        <p>Open your submitted rehearsal or domain reassessment. Expand the question and choose Report this question. CertCity includes the item and the guide so a reviewer can find your exact version.</p>
+        <p>Every question you answer has a Report this question link once you’ve seen its answer: practice exams and domain retests after you submit, the questions after each city mission, a shift’s closing questions and the exam guide decisions. CertCity includes the item and the guide so a reviewer can find your exact version.</p>
       </section>
       <section className="academy-panel">
         <h2>Work without the 3D view</h2>
-        <p>Use Places or Assignments to reach a mission with the keyboard. Select a listed resident, case file, or work area to open the same controls and feedback.</p>
+        <p>Use Places or Missions to reach a mission with the keyboard. Select a listed resident, mission file, or work area to open the same controls and feedback.</p>
       </section>
       <section className="academy-panel">
         <h2>Contact CertCity</h2>

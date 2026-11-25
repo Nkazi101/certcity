@@ -188,6 +188,50 @@ export const skillNotes: Record<TrackId, readonly (readonly string[])[]> = {
       "Correlate the first failing stage with configuration and permission revisions. Reproduce a known-good case, compare with the failing trace, and repair the smallest responsible boundary.",
     ],
   ],
+  // Decision rules from the CCDV-P lessons (guide v1.0), one per skill.
+  "developer-professional": [
+    [
+      "Split work across agents only where the pieces are independent and reading-heavy, and make every handoff an explicit contract: what the worker receives, which tools it may use, what it must return, and how it reports failure.",
+      "A long-running agent survives interruption only if its progress lives outside the context window: persist the session, checkpoint side effects as idempotent steps keyed by a stable ID, and treat a model version change as a new conversation boundary.",
+      "Let production data move a system along the workflow-to-agent spectrum: convert paths that turn out to be fixed into code, give autonomy only where traces show the next step genuinely depends on what was found, and standardize the harness the team operates.",
+      "Pick the context tool by what is filling the window and what must survive: clear stale tool results, compact when the conversation itself is near the limit, write durable facts to memory, defer large tool catalogs, and change instructions mid-conversation without breaking the cached prefix.",
+    ],
+    [
+      "Classify every failure before reacting to it: back off and retry transient capacity errors, raise the output budget on length stops, route refusals through a refusal-specific path, fail fast on invalid requests, and stop retrying when a circuit breaker says the dependency is down.",
+      "Find the binding constraint before you scale: requests per minute, uncached input tokens per minute, output tokens per minute, ramp limits, a tenant's share, or the price of real-time work that could wait for a batch.",
+      "Treat prompts, models, MCP tool schemas and gateway configuration as versioned release artifacts: test each change against recorded production cases, roll it out progressively with a measured gate, and keep a rollback that takes seconds.",
+      "Diagnose grounding failures stage by stage (indexing, retrieval, reranking, generation, citation) before changing anything, and pick agentic search or a retrieval pipeline by corpus size, freshness and the latency budget.",
+    ],
+    [
+      "Instrument every model request, tool call and agent turn as spans in one trace with token, cache and cost attributes, and choose the content-capture mode per destination from the privacy rules, not from convenience.",
+      "Define SLIs for what users experience (successful, grounded, on-time answers) as well as what the API returns, alert on error-budget burn rather than single spikes, and watch quality and cost signals specifically around model and prompt changes.",
+      "Find systemic problems by grouping traces into cohorts and comparing failure rates across them, and sample so that the rare failing traces are kept while routine successes are thinned.",
+    ],
+    [
+      "Locate a failure before fixing it: hold inputs fixed and replay, then test each layer in turn (data, tools, harness, model output) until the evidence shows where correct information stopped being correct.",
+      "During an LLM incident, mitigate first with the fastest reversible lever (flag rollback, fallback route, degraded mode), communicate on a schedule, and close the incident only when the failure is a regression eval, a monitor and a postmortem action item.",
+    ],
+    [
+      "Gate every prompt, model and agent change on a versioned suite that pairs a near-100% regression set with sliced capability tasks, graded by code where possible, and retire or refresh tasks before saturation and contamination make the score meaningless.",
+      "A model judge earns gating authority only after it agrees with human labels on a held-out set at a level you agreed in advance, with position and verbosity bias controlled and the judge model pinned; until then it advises and humans decide.",
+      "Measure live quality with a metric matched to the task type, sampled from real traffic and compared through a controlled experiment, and treat explicit user feedback as a biased signal that points you to cases rather than a score you can average.",
+    ],
+    [
+      "Model cost per completed task from real usage fields, take the free wins first (cache hit rate, batch for work that can wait), then route by measured quality per tier, and enforce per-tenant budgets in the platform rather than in application code that a busy tenant can outrun.",
+      "Split latency into time to first token and total time before changing anything, then fix the part the user waits on: stream and keep the prefix cached for a slow start, run independent tool calls in parallel and tune effort for a long finish, and use fast mode only where the measured gain justifies its price.",
+    ],
+    [
+      "Size guardrails to the agent's risk profile, put deterministic enforcement in code at the point where an irreversible action executes, and use model-based filters as an additional layer whose false-positive and false-negative rates you measure and tune per slice.",
+      "When an agent combines private data access, untrusted input and a way to communicate externally, assume injected text will steer it and remove or gate one leg of that combination in code; then prove the defense with red-team cases that target each path, not with a stronger system prompt.",
+      "Give every workload and agent its own non-human identity with short-lived credentials from workload identity federation, grant each tool only the scope its task needs, keep secrets out of prompts and sandboxes, and log security-relevant actions against that identity.",
+    ],
+    [
+      "Fan engineering work out only along seams where the pieces do not edit the same files, give each agent its own worktree and a verifiable definition of done, and plan the merge order before dispatch; then read fleet telemetry to find the failure mode instead of retrying individual agents.",
+      "Introduce AI code review in shadow mode, measure its findings against what human reviewers and later incidents show, and give it merge-gating authority only for the finding classes where its precision is proven, while humans stay accountable for what merges.",
+      "Run an unattended agent only with a verifiable completion condition, the narrowest tools and connectors the run needs, durable checkpoints, a bound on turns or spend, and a notification and escalation path for the moment it stops or needs a decision.",
+      "Put organization policy in managed settings, which outrank every user and project file, lock the lists that matter (permission rules, hooks, MCP servers, marketplaces) to managed sources, deliver telemetry and gateway routing centrally, and admit shared prompts, Skills, plugins and MCP servers through a reviewed quality and safety bar.",
+    ],
+  ],
 };
 
 export function skillNote(track: TrackId, objective: PracticeItem["objective"]) {

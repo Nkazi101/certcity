@@ -3,7 +3,8 @@ import { makePerson, makeVehicle } from "./actors";
 import { landmark } from "./sites";
 import type { Environment } from "./sites";
 import { ModelKit } from "./model-kit";
-import { lightModel, modelLoader, releaseModels } from "./gltf";
+import { buildShiftActors } from "./depot-shift";
+import { compactModel, lightModel, modelLoader, releaseModels } from "./gltf";
 import type { ModelState } from "./gltf";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 
@@ -198,6 +199,7 @@ export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state
   kit.tree(depot, 10.0, -6.98, 1.13, 9);
   for (const x of [-6.8, -5.9, -5.2, 6.1, 7.2]) kit.shrub(depot, x, 5.77, 1.2, true);
   dispatchWayfinding(kit, room);
+  const shiftActors = buildShiftActors(kit, scene, room);
   const lamp = new THREE.PointLight("#fff0ca", 20, 11, 2);
   lamp.position.set(3.55, 4.25, -1.8);
   scene.add(lamp);
@@ -212,6 +214,7 @@ export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state
     }
     model = asset;
     lightModel(asset.scene);
+    compactModel(asset.scene);
     scene.add(asset.scene);
     fixtureFallback.visible = false;
     onArtState("ready");
@@ -232,6 +235,10 @@ export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state
   workers[0].person.rotation.y = Math.PI;
   workers[1].person.rotation.y = Math.PI - .15;
   workers[2].person.rotation.y = Math.PI + .10;
+  // Station result badges ride on the person working each station.
+  shiftActors.stations.add("support", workers[0].person);
+  shiftActors.stations.add("lookup", workers[1].person);
+  shiftActors.stations.add("dispatch", workers[2].person);
   const queue = kit.group(scene, [-3.61, 1.409, 1.51]);
   const trays = Array.from({ length: 4 }, (_, index) => {
     const tray = kit.group(queue, [0, index * .085, 0], index % 2 ? -.04 : .053);
@@ -256,7 +263,13 @@ export function buildDepot(kit: ModelKit, scene: THREE.Scene, onArtState: (state
       workers[0].work(time * 6.4, "type");
       workers[1].work(time * 2.75 + .9, "scan");
       workers[2].work(time * 3.42 + 2.3, "pack");
+      shiftActors.update(time);
     },
+    setRoomReaction(state, immediate) {
+      shiftActors.set(state, immediate);
+    },
+    setStationOutcome: shiftActors.stations.set,
+    reactionFocus: shiftActors.focus,
     dispose() {
       ended = true;
       if (model) releaseModels([model]);

@@ -1,11 +1,16 @@
 import type { TrackId } from "../blueprints";
-import { decemberVersion } from "../december-blueprints";
+import { decemberVersion, hasDecemberGuide } from "../december-blueprints";
 import type { ExamVersion } from "../december-blueprints";
 import { evidenceFingerprint, evidenceKeys, evidenceLink, evidenceRecord, evidenceText } from "../evidence-snapshot";
 import { architectDefinitions } from "./architect";
 import { associateDefinitions, associateRevisedDefinitions } from "./associate";
 import { developerDefinitions, developerRevisedDefinitions } from "./developer";
-import { capstoneFieldLimit, sameList } from "./model";
+import { developerProfessionalDefinitions } from "./developer-professional";
+import * as legacyArchitect from "./legacy/architect";
+import * as legacyAssociate from "./legacy/associate";
+import * as legacyDeveloper from "./legacy/developer";
+import * as legacyProfessional from "./legacy/professional";
+import { capstoneDocumentFormats, capstoneEditors, capstoneFieldLimit, sameList } from "./model";
 import type { CapstoneAttempt, CapstoneDefinition, CapstoneDraft, CapstoneSnapshot, CapstoneStage } from "./model";
 import { professionalDefinitions, professionalRevisedDefinitions } from "./professional";
 
@@ -16,6 +21,7 @@ const earlier = {
   "developer-foundations": developerDefinitions,
   "architect-foundations": architectDefinitions,
   "architect-professional": professionalDefinitions,
+  "developer-professional": developerProfessionalDefinitions,
 };
 
 const revised = {
@@ -24,10 +30,30 @@ const revised = {
   "architect-professional": professionalRevisedDefinitions,
 };
 
+// Retired practicals (command-manifest and adapter simulations, replaced by hands-on labs in v2).
+// Kept so earlier submissions saved without a case snapshot still validate against the case they answered.
+const legacy: Record<TrackId, { earlier: Record<CapstoneStage, CapstoneDefinition>; revised?: Record<CapstoneStage, CapstoneDefinition> }> = {
+  "associate-foundations": { earlier: legacyAssociate.associateDefinitions, revised: legacyAssociate.associateRevisedDefinitions },
+  "developer-foundations": { earlier: legacyDeveloper.developerDefinitions, revised: legacyDeveloper.developerRevisedDefinitions },
+  "architect-foundations": { earlier: legacyArchitect.architectDefinitions },
+  "architect-professional": { earlier: legacyProfessional.professionalDefinitions, revised: legacyProfessional.professionalRevisedDefinitions },
+  // No retired practicals: the CCDV-P lab shipped with the track.
+  "developer-professional": { earlier: developerProfessionalDefinitions },
+};
+
 const transferInterval = 7 * 24 * 60 * 60 * 1000;
 
 export function getCapstoneDefinition(trackId: TrackId, version: ExamVersion, stage: CapstoneStage): CapstoneDefinition {
-  return version === decemberVersion && trackId !== "architect-foundations" ? revised[trackId][stage] : earlier[trackId][stage];
+  return version === decemberVersion && hasDecemberGuide(trackId) ? revised[trackId][stage] : earlier[trackId][stage];
+}
+
+/** Finds the current or retired definition a submission answered. */
+function answeredDefinition(trackId: TrackId, version: ExamVersion, stage: CapstoneStage, scenarioId: string) {
+  const current = getCapstoneDefinition(trackId, version, stage);
+  if (current.id === scenarioId) return current;
+  const retired = legacy[trackId];
+  const definition = (version === decemberVersion ? retired.revised ?? retired.earlier : retired.earlier)[stage];
+  return definition.id === scenarioId ? definition : null;
 }
 
 export function initialCapstoneDraft(definition: CapstoneDefinition): CapstoneDraft {
@@ -35,7 +61,10 @@ export function initialCapstoneDraft(definition: CapstoneDefinition): CapstoneDr
 }
 
 export function scoreCapstone(trackId: TrackId, version: ExamVersion, stage: CapstoneStage, draft: CapstoneDraft) {
-  const definition = getCapstoneDefinition(trackId, version, stage);
+  return scoreDefinition(getCapstoneDefinition(trackId, version, stage), trackId, version, stage, draft);
+}
+
+function scoreDefinition(definition: CapstoneDefinition, trackId: TrackId, version: ExamVersion, stage: CapstoneStage, draft: CapstoneDraft) {
   const artifact = Object.fromEntries(definition.fields.map(({ id }) => [id, (draft[id] ?? "").slice(0, capstoneFieldLimit)]));
   const checks = definition.exercise(artifact);
   const results = definition.criteria.map((criterion) => {
@@ -71,15 +100,16 @@ function validSnapshot(value: unknown): value is CapstoneSnapshot {
     Array.isArray(documents) && documents.length > 0 && documents.length <= 20 && documents.every((document) =>
       evidenceRecord(document) && evidenceKeys(document, ["id", "title", "text", "format"]) &&
       evidenceText(document.id, 120) && evidenceText(document.title, 240) && evidenceText(document.text, 4800) &&
-      (document.format === undefined || document.format === "json")) &&
+      (document.format === undefined || (capstoneDocumentFormats as readonly unknown[]).includes(document.format))) &&
     new Set(documents.map(({ id }) => id)).size === documents.length &&
     Array.isArray(fields) && fields.length > 0 && fields.length <= 30 && fields.every((field) =>
-      evidenceRecord(field) && evidenceKeys(field, ["id", "label", "group", "instruction", "initial", "editor", "options"]) &&
+      evidenceRecord(field) && evidenceKeys(field, ["id", "label", "group", "instruction", "initial", "editor", "options", "example"]) &&
       evidenceText(field.id, 120) && evidenceText(field.label, 240) &&
       (field.group === undefined || evidenceText(field.group, 240)) &&
       (field.instruction === undefined || evidenceText(field.instruction, 1600)) &&
       (field.initial === undefined || evidenceText(field.initial, capstoneFieldLimit, true)) &&
-      (field.editor === undefined || field.editor === "text" || field.editor === "notes" || field.editor === "json") &&
+      (field.editor === undefined || (capstoneEditors as readonly unknown[]).includes(field.editor)) &&
+      (field.example === undefined || evidenceText(field.example, capstoneFieldLimit)) &&
       (field.options === undefined || Array.isArray(field.options) && field.options.length <= 20 &&
         field.options.every((option) => evidenceText(option, 120)))) &&
     new Set(fields.map(({ id }) => id)).size === fields.length &&
@@ -95,7 +125,7 @@ export function validCapstoneAttempt(value: unknown): value is CapstoneAttempt {
   if (typeof id !== "string" || !id || id.length > 120 ||
       typeof trackId !== "string" || !Object.hasOwn(earlier, trackId) ||
       (version !== "july-2026" && version !== decemberVersion) ||
-      (version === decemberVersion && trackId === "architect-foundations") ||
+      (version === decemberVersion && !hasDecemberGuide(trackId)) ||
       (stage !== "capstone" && stage !== "transfer") ||
       !evidenceText(scenarioId, 120) ||
       typeof submittedAt !== "number" || !Number.isSafeInteger(submittedAt) || submittedAt < 1 || submittedAt > 8.64e15 ||
@@ -118,10 +148,10 @@ export function validCapstoneAttempt(value: unknown): value is CapstoneAttempt {
   }
 
   // Earlier submissions did not record their complete case. Validate their original work and result identities.
-  const definition = getCapstoneDefinition(trackId, version, stage);
-  if (scenarioId !== definition.id || Object.keys(artifact).length !== definition.fields.length ||
+  const definition = answeredDefinition(trackId, version, stage, scenarioId);
+  if (!definition || Object.keys(artifact).length !== definition.fields.length ||
       definition.fields.some(({ id }) => typeof artifact[id] !== "string" || artifact[id].length > capstoneFieldLimit)) return false;
-  const expected = scoreCapstone(trackId, version, stage, artifact);
+  const expected = scoreDefinition(definition, trackId, version, stage, artifact);
   return passed === expected.passed && results.length === expected.results.length &&
     expected.results.every((entry, index) => {
       const result = results[index];

@@ -136,6 +136,7 @@ function KitchenCounter({ value, change, ...actions }: WorkProps<KitchenWork>) {
           <h4>Before posting</h4>
           <CheckField checked={value.reconcile} change={(reconcile) => change({ ...value, reconcile })}>Compare total with the trusted line sum</CheckField>
           <CheckField checked={value.typed} change={(typed) => change({ ...value, typed })}>Require integer cents or null</CheckField>
+          <CheckField checked={!!value.trustPrinted} change={(trustPrinted) => change({ ...value, trustPrinted })}>Post the printed total once it parses as integer cents</CheckField>
           <div className="kitchen-output" aria-live="polite"><span>Fixture with amount text</span><p>{result.shape}</p></div>
         </>}
         {panel === "exceptions" && <>
@@ -274,7 +275,8 @@ function ArchiveTable({ value, change, ...actions }: WorkProps<ArchiveWork>) {
   const [brief, setBrief] = useState<ArchiveWork | null>(actions.saved ? value : null);
   const result = runArchive(value);
   const request = result.workers.find(({ id }) => id === worker)!;
-  const packetValues = { collection: request.name, dates: request.dates, accession: request.accession, citation: "Collection, record ID, source reference" };
+  const packetValues = { collection: request.name, dates: request.dates, accession: request.accession, citation: "Collection, record ID, source reference",
+    transcript: "Every message from this coordination session" };
   const sameDispatch = !!dispatched && dispatched.south === value.south && dispatched.keepRegister === value.keepRegister
     && dispatched.parallel === value.parallel && dispatched.access === value.access && dispatched.packets === value.packets;
 
@@ -313,8 +315,9 @@ function ArchiveTable({ value, change, ...actions }: WorkProps<ArchiveWork>) {
         <button type="button" className="button button-outline" onClick={() => setDispatched(value)}><Play size={16} />Replay worker dispatch</button>
         {sameDispatch && <div className="archive-dispatch-output" aria-live="polite">
           <p>{result.assignment} {result.preserved}</p>
-          {result.workers.map(({ id, name, missing }) => <p key={id}><strong>{name}</strong> · {missing.length
-            ? `Missing ${missing.map(({ label }) => label.toLowerCase()).join(", ")}.` : "Packet complete."}</p>)}
+          {result.workers.map(({ id, name, missing, extra }) => <p key={id}><strong>{name}</strong> · {missing.length
+            ? `Missing ${missing.map(({ label }) => label.toLowerCase()).join(", ")}.` : "Packet complete."}
+            {extra.length > 0 && ` Also carries ${extra.map(({ label }) => label.toLowerCase()).join(", ")}, which buries the request in unrelated history.`}</p>)}
           <p>{value.access === "both" ? "Both workers received unrelated collection access. " : ""}
             Requests ran {value.parallel ? "together" : "one at a time"}.</p>
         </div>}
@@ -335,6 +338,7 @@ function ArchiveTable({ value, change, ...actions }: WorkProps<ArchiveWork>) {
           <strong>What the editor sees</strong>
           {result.brief.length ? <ul>{result.brief.map(({ id, label, detail }) => <li key={id}><b>{label}</b> · {detail}</li>)}</ul> : <p>No findings attached.</p>}
           {!value.brief.includes("gaps") && <p>The report leaves the editor unable to distinguish unchecked wards from a completed search.</p>}
+          {value.brief.includes("absent") && <p>The brief claims the unchecked wards have no records, but nobody searched them.</p>}
           {!result.passes[0] && <p>{result.assignment} {result.preserved}</p>}
           {!result.passes[1] && <p>Worker dispatch still needs complete scoped packets and parallel execution.</p>}
         </div>}

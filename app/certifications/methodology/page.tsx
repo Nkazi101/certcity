@@ -11,7 +11,7 @@ export const metadata = pageMetadata(methodologyPage);
 export default function PracticeMethodology() {
   return <div className="academy-shell">
     <AcademyHeader />
-    <main className="academy-width academy-workspace academy-editorial academy-article">
+    <main id="academy-main" tabIndex={-1} className="academy-width academy-workspace academy-editorial academy-article">
       <SeoBreadcrumbs entries={[{ name: siteName, path: "/" }, { name: "Claude exam practice", path: certificationCatalog.path }, { name: "Objective map and methodology", path: methodologyPage.path }]} />
       <header className="academy-workspace-title">
         <h1>{methodologyPage.title}</h1>
@@ -22,8 +22,8 @@ export default function PracticeMethodology() {
         <h2>How CertCity develops practice</h2>
         <ol className="academy-editorial-list">
           <li><strong>Start with the official guide.</strong> CertCity assigns a reference code and paraphrases each skill below. The exam guide determines the scope and domain weights.</li>
-          <li><strong>Build a case around a decision.</strong> Each mission asks the learner to inspect evidence, choose a policy or work product, and observe the outcome. The <Link href={dispatchCasePage.path}>City Dispatch walkthrough</Link> shows the evidence, decision, and simulated results.</li>
-          <li><strong>Write original practice and explanations.</strong> Guided items explain why each decision fits the case. Independent cases and timed forms use separate prompts to assess first-seen reasoning.</li>
+          <li><strong>Build a mission around a decision.</strong> Each mission asks the learner to inspect evidence, choose a policy or work product, and observe the outcome. The <Link href={dispatchCasePage.path}>City Dispatch walkthrough</Link> shows the evidence, decision, and simulated results.</li>
+          <li><strong>Write original practice and explanations.</strong> Guided items explain why each decision fits the scenario. Independent scenarios and timed forms use separate prompts, so they test reasoning on questions you haven’t seen.</li>
           <li><strong>Check the published mapping.</strong> Automated checks validate objective coverage, item identifiers, answer keys, form selection, and saved assessment snapshots in the repository.</li>
         </ol>
         <p>Coverage means a CertCity exercise samples a skill from the published guide. The practice benchmark is provisional. CertCity has yet to validate it against independent learner exam outcomes.</p>

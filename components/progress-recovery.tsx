@@ -34,7 +34,7 @@ export function ProgressRecovery() {
 
   return <section className="academy-panel academy-recovery" aria-labelledby="recovery-title">
     <h2 id="recovery-title">Save and recover your progress</h2>
-    <p>Your backup may include case responses and work products. Keep the file private.</p>
+    <p>Your backup may include mission responses and work products. Keep the file private.</p>
     <div className="academy-actions">
       <button className="academy-button secondary" disabled={!ready || busy} onClick={() => downloadProgressBackup()}>Download progress</button>
       <label htmlFor={fileId}>Import a CertCity backup</label>

@@ -109,15 +109,15 @@ export function CityAssignmentDialog({ dialog, assignment, mission, record, expe
         </div>}
         {beat === "first-answer" && <div className="conversation-actions"><ConversationAction primary disabled={savingInterview} onClick={() => void recordInterview(first.id, "second-opening")}>Hear from {second.name.split(" ")[0]}</ConversationAction></div>}
         {beat === "second-opening" && <div className="conversation-actions"><ConversationAction primary onClick={() => setBeat("second-answer")}>{second.question}</ConversationAction></div>}
-        {beat === "second-answer" && <div className="conversation-actions"><ConversationAction primary disabled={savingInterview} onClick={() => void recordInterview(second.id, "evidence")}>Open case file</ConversationAction></div>}
+        {beat === "second-answer" && <div className="conversation-actions"><ConversationAction primary disabled={savingInterview} onClick={() => void recordInterview(second.id, "evidence")}>Open mission file</ConversationAction></div>}
         {beat === "evidence" && <>
-          <details className="conversation-file"><summary>Read the case file</summary>
+          <details className="conversation-file"><summary>Read the mission file</summary>
             <dl>{assignment.cases.map(({ id, name, evidence: line }) => <div key={id}><dt>{name}</dt><dd>{line}</dd></div>)}</dl>
           </details>
           <div className="conversation-actions"><ConversationAction onClick={() => setBeat("second-opening")}>Back</ConversationAction><ConversationAction primary onClick={() => result && saved ? setBeat("result") : openDecision(0)}>{result && saved ? "Open saved replay" : "Enter the work area"}</ConversationAction></div>
         </>}
         {beat === "choices" && <>
-          {!evidence && <details className="conversation-file"><summary>Review the case file</summary>
+          {!evidence && <details className="conversation-file"><summary>Review the mission file</summary>
             <dl>{assignment.cases.map(({ id, name, evidence: line }) => <div key={id}><dt>{name}</dt><dd>{line}</dd></div>)}</dl></details>}
           <div className="conversation-replies" aria-label="Choose your response">
             {control.choices.map((option, index) => <ConversationAction key={option} onClick={() => choose(index)}>{option}</ConversationAction>)}
@@ -125,7 +125,7 @@ export function CityAssignmentDialog({ dialog, assignment, mission, record, expe
           <div className="conversation-actions"><ConversationAction onClick={() => position > 0 ? openDecision(position - 1) : setBeat("evidence")}>Back</ConversationAction></div>
         </>}
         {beat === "result" && result && <>
-          <details className="conversation-file"><summary>Review stakeholder conversations and case evidence</summary>
+          <details className="conversation-file"><summary>Review stakeholder conversations and mission evidence</summary>
             <dl>{experience.interviews.map((interview) => <div key={interview.id}><dt>{interview.name}</dt>
               <dd><strong>You asked:</strong> {interview.question} <strong>{interview.name.split(" ")[0]}:</strong> {interview.reply}</dd></div>)}
               {assignment.cases.map(({ id, name, evidence: line }) => <div key={id}><dt>{name}</dt><dd>{line}</dd></div>)}

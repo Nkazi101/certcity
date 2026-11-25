@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { followRoute, makePerson, makeVehicle } from "./actors";
-import { lightModel, modelLoader, releaseModels } from "./gltf";
+import { compactModel, lightModel, modelLoader, releaseModels } from "./gltf";
 import { landmark } from "./sites";
 import { buildStLouisGround, delmarStop } from "./st-louis-ground";
 import type { StreetActor, Tree } from "./st-louis-ground";
@@ -25,6 +25,7 @@ const sites: Record<StLouisDistrict["id"], [id: string, x: number, z: number, w:
 };
 
 const walkerModels = ["riley", "jules"];
+const movingModels = new Set(["riley", "jules", "sedan", "crossover", "trolley", "van", "bus"]);
 const area = 46;
 
 function shuttleRoute(path: StreetActor["path"], speed: number, phase: number) {
@@ -58,6 +59,7 @@ function placeTrees(source: THREE.Object3D, group: THREE.Group, positions: Tree[
   source.updateMatrixWorld(true);
   source.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.userData.fxSway = "height";
     const trees = new THREE.InstancedMesh(object.geometry, object.material, positions.length);
     const matrix = new THREE.Matrix4();
     positions.forEach(({ x, z, size }, i) => {
@@ -102,9 +104,10 @@ export function stLouisExpansion(kit: ModelKit, scene: THREE.Scene, invalidate: 
     }
   }
   const ground = kit.material("#92ac61", "grass");
-  kit.ground(owned, -73, -19, 420, 380, ground, -.067);
   const roads = new THREE.Group();
   owned.add(roads);
+  // Batched with the streets so the regional lawn shares the city's grass draw.
+  kit.ground(roads, -73, -19, 420, 380, ground, -.067);
   buildRegionalStreets(kit, roads);
   kit.batch(roads);
   let disposed = false;
@@ -120,6 +123,12 @@ export function stLouisExpansion(kit: ModelKit, scene: THREE.Scene, invalidate: 
         throw new Error("Scene closed");
       }
       resolved.add(asset);
+      // Shared sources are compacted once, before anything clones or instances them.
+      if (name === "oak" || name === "upright-tree") compactModel(asset.scene, () => false);
+      else if (name !== "delmar") {
+        lightModel(asset.scene, !movingModels.has(name));
+        compactModel(asset.scene);
+      }
       return asset;
     }).catch((error: unknown) => {
       cache.delete(name);
@@ -129,9 +138,10 @@ export function stLouisExpansion(kit: ModelKit, scene: THREE.Scene, invalidate: 
     return pending;
   }
 
+  /** Resolves true once the model has replaced the stand-in (false when it could not load). */
   function upgradeCar(root: THREE.Object3D, name: "sedan" | "crossover" | "trolley" | "van", color?: string) {
-    void load(name).then(({ scene: model }) => {
-      if (disposed) return;
+    return load(name).then(({ scene: model }) => {
+      if (disposed) return false;
       const car = model.clone();
       const fallback = root.children.filter((child) => child.name !== "Vehicle lights" && child.name !== "Animated hubs" && child.name !== "Actor contact shadow");
       root.add(car);
@@ -149,10 +159,13 @@ export function stLouisExpansion(kit: ModelKit, scene: THREE.Scene, invalidate: 
         });
       }
       invalidate();
-    }).catch(() => {});
+      return true;
+    }).catch(() => false);
   }
 
   function upgradeWalker(root: THREE.Object3D, name: string, phase = 0, district?: DistrictId) {
+    // Lean tier keeps the one-draw stand-in figure; the walker models cost five skinned draws each.
+    if (kit.lean) return;
     void load(name).then(({ scene: model, animations }) => {
       if (disposed) return;
       const person = cloneSkeleton(model);
@@ -190,7 +203,7 @@ export function stLouisExpansion(kit: ModelKit, scene: THREE.Scene, invalidate: 
       const object = fallback?.person ?? makeVehicle(kit, root, index % 2 === 0 ? "#ad5b47" : "#64858a", model === "trolley");
       object.position.y = height;
       if (walker) upgradeWalker(object, model, index * .42, district.id);
-      else upgradeCar(object, model);
+      else void upgradeCar(object, model);
       const move = walker ? (shuttle ? shuttleRoute : followRoute)(path, speed, phase)
         : model === "trolley" ? null : followRoad(path, speed, phase);
       return (seconds: number) => {
@@ -284,6 +297,7 @@ export function stLouisExpansion(kit: ModelKit, scene: THREE.Scene, invalidate: 
             }
           });
         }
+        if (district.id === "delmar") compactModel(asset.scene);
         invalidate();
       }).catch(() => {
         if (disposed) return;
@@ -320,10 +334,10 @@ export function stLouisExpansion(kit: ModelKit, scene: THREE.Scene, invalidate: 
     invalidate,
     landmarks,
     upgradeDowntownCar(root: THREE.Object3D, model: "sedan" | "crossover", color: string) {
-      upgradeCar(root, model, color);
+      return upgradeCar(root, model, color);
     },
     upgradeDowntownVan(root: THREE.Object3D) {
-      upgradeCar(root, "van");
+      void upgradeCar(root, "van");
     },
     upgradeDowntownTrees(parent: THREE.Object3D, trees: Tree[]) {
       const fallback = new THREE.Group();

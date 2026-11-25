@@ -48,7 +48,7 @@ function EditorialWorkshop({ onComplete }: { onComplete: () => void }) {
       onClick={() => {
         setResult(true);
         if (!included && checked && delegationSettings.every(([, expected], index) => routes[index] === expected)) onComplete();
-      }}><Play size={15} aria-hidden="true" /> Run the publication case</button>
+      }}><Play size={15} aria-hidden="true" /> Run the publication scenario</button>
   </div>;
 }
 
@@ -120,7 +120,7 @@ function DeploymentWorkshop({ onComplete }: { onComplete: () => void }) {
   return <div className="academy-workshop-flow">
     <section>
       <h3>Review a deployment under failure</h3>
-      <p>In this case, the existing approved account and self-hosted runner can reach the private service. The proposed hosted setup lacks approval for its session store. Raw traces are prohibited. A write sometimes commits before returning a timeout.</p>
+      <p>In this scenario, the existing approved account and self-hosted runner can reach the private service. The proposed hosted setup lacks approval for its session store. Raw traces are prohibited. A write sometimes commits before returning a timeout.</p>
       <label>Runtime and state<select value={runtime} onChange={(event) => { setRuntime(event.target.value); setResult(false); }}>
         <option value="managed">Hosted runtime with unapproved session retention</option>
         <option value="controlled">Approved inference surface and private runner with controlled state</option>
@@ -136,9 +136,9 @@ function DeploymentWorkshop({ onComplete }: { onComplete: () => void }) {
     {result && <section aria-live="polite" className="academy-workshop-result">
       <h3>Release review</h3>
       <ul>
-        <li><strong>{copies} unapproved copies</strong><p>{copies ? "Review both session state and trace payloads." : "The case keeps source data in approved storage."}</p></li>
+        <li><strong>{copies} unapproved copies</strong><p>{copies ? "Review both session state and trace payloads." : "The setup keeps source data in approved storage."}</p></li>
         <li><strong>{recovery ? "One recorded change" : "Two recorded changes"}</strong><p>{recovery ? "Reconciliation finds the timed-out but committed action." : "The recovery write uses a fresh identity and commits a duplicate."}</p></li>
-        <li><strong>{!copies && recovery ? "Meets the case’s release conditions" : "Requires changes before release"}</strong></li>
+        <li><strong>{!copies && recovery ? "Meets the release conditions" : "Requires changes before release"}</strong></li>
       </ul>
       <ExternalLink href="https://platform.claude.com/docs/en/managed-agents/overview">Anthropic runtime and environment guide</ExternalLink>
     </section>}

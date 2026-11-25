@@ -1,4 +1,5 @@
 import type { sources } from "../items";
+import { developerProfessionalDebriefs } from "../developer-professional-missions";
 
 type Debrief = {
   observation: string;
@@ -212,4 +213,5 @@ export const assignmentDebriefs: Readonly<Record<string, Debrief>> = {
     transfer: "Read the incident and handoff together. Ask who can act now, which path still works, what the next operator can reproduce and what condition warrants rollback or a staffed workaround.",
     references: ["settings", "skills", "eval", "context"],
   },
+  ...developerProfessionalDebriefs,
 };

@@ -78,6 +78,17 @@ export function addCitySigns(kit: ModelKit, scene: THREE.Scene, invalidate: () =
           }
         }
 
+        if (billboard) {
+          const groundY = baseY - position[1];
+          const postTop = -height * .2;
+          for (const x of [-width * .29, width * .29]) {
+            kit.box(sign, [x, groundY + .11, 0], [.58, .22, .58], footing, true);
+            kit.box(sign, [x, (groundY + postTop) / 2, 0], [.19, postTop - groundY, .23], frame);
+          }
+        }
+        // The frame is static: it joins the city's shared batches. Printed faces stay meshes for link hit tests.
+        kit.batch(sign);
+
         for (const side of billboard ? [1, -1] : [1]) {
           const surface = new THREE.Mesh(panel, print);
           surface.position.z = side * (depth / 2 + .003);
@@ -85,14 +96,6 @@ export function addCitySigns(kit: ModelKit, scene: THREE.Scene, invalidate: () =
           surface.scale.set(width, height, 1);
           sign.add(surface);
           links.push({ href, surface });
-        }
-
-        if (!billboard) continue;
-        const groundY = baseY - position[1];
-        const postTop = -height * .2;
-        for (const x of [-width * .29, width * .29]) {
-          kit.box(sign, [x, groundY + .11, 0], [.58, .22, .58], footing, true);
-          kit.box(sign, [x, (groundY + postTop) / 2, 0], [.19, postTop - groundY, .23], frame);
         }
       }
       invalidate();

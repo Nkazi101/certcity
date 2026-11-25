@@ -14,8 +14,8 @@ export const architectMissions: readonly Mission[] = [
   },
   workbench({
     id: "library-search", track, place: "olive-library", title: "Reopen the reference desk",
-    brief: "The reference assistant stops before returning evidence. Its draft exhibit labels also mix up archive records and photo descriptions.",
-    specialist: "Nolan’s catalog team pulled a transcript, two connector definitions, and a pair of disputed visitor counts.",
+    brief: "The reference assistant promised a catalog check and never answered. A look-up also opened a draft exhibit entry, and the attendance panel prints a figure no record holds.",
+    specialist: "Nolan’s team pulled the stalled assistant turn, the catalog connector’s notes, and three attendance records that disagree.",
     workload: "Three reference desk acceptance cases", measure: "Reference checks passed",
   }, [
     step("1.1", "lost-item-loop", "Continue the catalog lookup",
@@ -37,7 +37,7 @@ export const architectMissions: readonly Mission[] = [
   workbench({
     id: "printworks-rules", track, place: "washington-printworks", title: "Standardize proof releases",
     brief: "Two shifts run the same release differently. Their proof instructions live in personal files, and paper-size rules appear while editing billing code.",
-    specialist: "Riley has a clean checkout, a proof template, and test files in both print packages.",
+    specialist: "Riley brought his own instruction file and checklist notes, the evening shift’s clean checkout list, Lee’s prepress note and the shop runbook.",
     workload: "Three clean-checkout checks", measure: "Configuration checks passed",
   }, [
     step("3.1", "shared-workspace-rule", "Store the shared proof convention",
@@ -81,8 +81,8 @@ export const architectMissions: readonly Mission[] = [
   ]),
   workbench({
     id: "community-handoff", track, place: "community", title: "Fix room-booking handoffs",
-    brief: "The booking assistant proposes changes before checking caller eligibility and sends staff a chat transcript with no case summary.",
-    specialist: "The bookings desk supplied a verified request, a disputed change, and a resident who explicitly asked for a person.",
+    brief: "The booking agent changed a room after its approval was withdrawn, and a resident who asked for a person reached staff with nothing but a chat log.",
+    specialist: "Malik pulled the Saturday choir session log, the notes on both hook scripts, and the desk handoff tool’s template fields.",
     workload: "Three room-booking acceptance cases", measure: "Booking checks passed",
     requires: ["dispatch-lookup"],
   }, [
@@ -106,8 +106,8 @@ export const architectMissions: readonly Mission[] = [
   ]),
   workbench({
     id: "archive-coordination", track, place: "library", title: "Recover a partial archive search",
-    brief: "The city wants a sourced exhibit brief today. Two specialists duplicated the map search and a third source never replied.",
-    specialist: "Reese can provide an accession list, the worker traces, and each collection’s access policy.",
+    brief: "The editor wants a sourced exhibit brief today. The first round left South unassigned, two wards timed out, and the map worker reported the gap only in prose.",
+    specialist: "Reese has the first-round worker traces, the editor’s requirements, Mina’s map note and the collection access policy.",
     workload: "Three worker and coordinator acceptance cases", measure: "Research checks passed",
     requires: ["library-search"],
   }, [
@@ -131,7 +131,7 @@ export const architectMissions: readonly Mission[] = [
   workbench({
     id: "release-review", track, place: "office", title: "Review the order-system migration",
     brief: "Northline is migrating a shared order identifier. A small label fix is ready, but the identifier’s downstream dependencies are unclear.",
-    specialist: "Priya supplies a release branch, a prior investigation, and a failing normalization test.",
+    specialist: "Priya has the saved 54a baseline, the normalizeRef contract, two bug reports and her two repair ideas.",
     workload: "Five release acceptance cases", measure: "Release checks passed",
     requires: ["printworks-rules"],
   }, [
@@ -164,7 +164,7 @@ export const architectMissions: readonly Mission[] = [
   workbench({
     id: "repair-shop-tools", track, place: "shop", title: "Give the repair desk the right tools",
     brief: "Sam’s assistant can edit jobs when it only needs a status check. The shared connector also disappears on a fresh workstation.",
-    specialist: "The desk collected a permission report, a project checkout and a call-site trace.",
+    specialist: "The desk laid out the server notes, Gail’s ~/.claude.json and note, the triage session log, and Sam’s rules on who may do what.",
     workload: "Three tool and configuration acceptance cases", measure: "Tool checks passed",
     requires: ["community-handoff"],
   }, [
@@ -189,7 +189,7 @@ export const architectMissions: readonly Mission[] = [
   workbench({
     id: "printworks-ci", track, place: "washington-printworks", title: "Make review useful at the release gate",
     brief: "The review job can stall without a terminal. It flags allowed print tolerances and missed a mismatch between the renderer and the order format.",
-    specialist: "Riley has a retried commit, the tolerance sheet, and a labeled integration regression.",
+    specialist: "Riley pinned the runner environment, the press rule, the comment publisher contract and the changed components beside the release runner.",
     workload: "Three CI acceptance cases", measure: "Review checks passed",
     requires: ["release-review"],
   }, [

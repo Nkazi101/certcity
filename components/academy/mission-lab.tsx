@@ -40,7 +40,7 @@ function Pill({ children, tone = "plain" }: { children: ReactNode; tone?: "plain
   return <span className={`mission-pill mission-pill--${tone}`}>{children}</span>;
 }
 
-function Artifact({ icon: Icon, eyebrow, title, children, state }: {
+function Artifact({ eyebrow, title, children, state }: {
   icon: typeof FileText;
   eyebrow?: string;
   title: string;
@@ -48,7 +48,7 @@ function Artifact({ icon: Icon, eyebrow, title, children, state }: {
   state?: ReactNode;
 }) {
   return <article className="mission-artifact">
-    <header><Icon size={18} aria-hidden="true" /><div>{eyebrow && <small>{eyebrow}</small>}<strong>{title}</strong></div>{state}</header>
+    <header><div>{eyebrow && eyebrow.toLowerCase() !== title.toLowerCase() && <small>{eyebrow}</small>}<strong>{title}</strong></div>{state}</header>
     {children && <div className="mission-artifact-body">{children}</div>}
   </article>;
 }
@@ -69,18 +69,18 @@ function Setting({ title, description, selected, onClick, icon: Icon }: {
 
 function StationEvidence({ decision }: { decision: Workbench["decisions"][number] }) {
   return <div className="mission-station-brief">
-    <span>Evidence in this case</span>
+    <span>Evidence in this mission</span>
     <p>{decision.evidence}</p>
   </div>;
 }
 
-function SectionHeading({ icon: Icon, eyebrow, title, detail }: {
+function SectionHeading({ eyebrow, title, detail }: {
   icon: typeof FileText;
   eyebrow: string;
   title: string;
   detail?: string;
 }) {
-  return <div className="mission-section-heading"><span className="mission-section-icon"><Icon size={18} aria-hidden="true" /></span>
+  return <div className="mission-section-heading">
     <div><small>{eyebrow}</small><h4>{title}</h4>{detail && <p>{detail}</p>}</div>
   </div>;
 }
@@ -106,7 +106,7 @@ function LibraryDesk({ mission, position, selected, select }: LabViewProps) {
     </Artifact>
   </div>;
   if (position === 1) return <div className="mission-connector-board">
-    <SectionHeading icon={Search} eyebrow="Connector catalog · 2 definitions" title="Separate lookup from creation" detail="A visitor asks for the source of an existing photograph." />
+    <SectionHeading icon={Search} eyebrow="Connector catalog · 2 definitions" title="Catalog tools" detail="A visitor asks for the source of an existing photograph." />
     <div className="mission-connector-cards">
       <Artifact icon={FileSearch} eyebrow="search_records" title="Find exhibit material" state={<Pill tone="warn">overlaps</Pill>}><p>Searches archive records and returns existing evidence.</p><code>read: records</code></Artifact>
       <Artifact icon={Plus} eyebrow="search_exhibit" title="Find exhibit material" state={<Pill tone="bad">creates draft</Pill>}><p>Creates a draft exhibit record as a side effect.</p><code>write: exhibit draft</code></Artifact>
@@ -115,7 +115,7 @@ function LibraryDesk({ mission, position, selected, select }: LabViewProps) {
     <MissionMechanic mission={mission} position={position} selected={selected} select={select} />
   </div>;
   return <div className="mission-provenance-board">
-    <SectionHeading icon={Archive} eyebrow="Exhibit label · source review" title="Keep unlike counts auditable" detail="Two records describe different periods and measurement methods." />
+    <SectionHeading icon={Archive} eyebrow="Source review" title="Exhibit label" detail="Two records describe different periods and measurement methods." />
     <div className="mission-claim-sources">
       <Artifact icon={Table2} eyebrow="Saturday · direct measure" title="83 ticket scans"><p>Method: ticket scans</p><Pill>Saturday only</Pill></Artifact>
       <Artifact icon={FileText} eyebrow="Weekend · estimate" title="120 attendees"><p>Method: estimated attendance</p><Pill>Full weekend</Pill></Artifact>
@@ -131,7 +131,7 @@ function BookingFlow({ mission, position, selected, select }: LabViewProps) {
   const decision = mission.decisions[position];
   return <div className="mission-booking-board">
     <div className="mission-booking-flow">
-      <SectionHeading icon={Workflow} eyebrow="Room change request" title="Protect the booking write" />
+      <SectionHeading icon={Workflow} eyebrow="Room change request" title="Booking write" />
       <div className="mission-booking-nodes"><span>Resident request</span><ChevronRight /><span>Identity & eligibility</span><ChevronRight /><b>Room update</b></div>
       <Artifact icon={LockKeyhole} eyebrow="Service evidence" title="Verification record"><p>Current session: “verified”</p><p>Matching record for this resident and room: <strong>not found</strong></p><Pill tone="bad">write is sensitive</Pill></Artifact>
       <Artifact icon={Activity} eyebrow="Read response" title="Eligibility timestamp"><p>The tool returns an epoch timestamp.</p><p>Normalize successful output before the assistant uses it.</p></Artifact>
@@ -253,7 +253,7 @@ function MarketCloseBench({ mission, position, selected, select }: LabViewProps)
       <Artifact icon={FileCheck2} eyebrow="Source-linked orders" title="Order-date index"><p>Three purchase orders have different dates. Keep each date attached to its order ID and source ID.</p><div className="mission-index-rows"><span>Order ID <ArrowRight size={13} /> confirmed date <ArrowRight size={13} /> source ID</span><span>Order ID <ArrowRight size={13} /> confirmed date <ArrowRight size={13} /> source ID</span><span>Order ID <ArrowRight size={13} /> confirmed date <ArrowRight size={13} /> source ID</span></div></Artifact>
     </div>
     <div className="mission-market-controls"><SectionHeading icon={position === 0 ? Activity : position === 1 ? Database : position === 2 ? Users : PackageCheck}
-      eyebrow={position === 0 ? "Request lanes" : position === 1 ? "Case memory" : "Review capacity"}
+      eyebrow={position === 0 ? "Request lanes" : position === 1 ? "Order memory" : "Review capacity"}
       title={decision.station} />
       {position === 0 && <div className="mission-config-preview"><span>Request routing preview</span><strong>{selected[0] === 1 ? "Live confirmation stays interactive; batch rows join by custom_id and only temporary failures retry." : selected[0] === 0 ? "The six-second confirmation waits behind overnight work." : selected[0] === 2 ? "Completed batch rows repeat and may attach to the wrong vendor." : "Choose the live and batch paths for this closing shift."}</strong></div>}
       {position === 1 && <div className="mission-config-preview"><span>Compaction preview</span><strong>{selected[0] === 1 ? "Each active order retrieves its own date and source ID." : selected[0] === 0 ? "The latest narrative date can be copied to unrelated orders." : selected[0] === 2 ? "The full conversation remains in context, but similar vendors can still inherit the wrong date." : "Choose how source-linked order facts are restored."}</strong></div>}
@@ -351,7 +351,7 @@ export function MissionLab({ mission, position, choices, run, saved, meetsGoals,
   return <section className={`mission-lab mission-lab--${mission.id}`} aria-labelledby="mission-lab-title" tabIndex={-1}>
     <header className="mission-lab-header">
       <div><p className="mission-lab-kicker"><span>{experience.room}</span><span>·</span><span>{mission.measure}</span></p><h3 id="mission-lab-title">{mission.title}</h3><p>{mission.brief}</p></div>
-      <div className="mission-lab-record"><span>Assignment record</span><strong>{mission.workload}</strong></div>
+      <div className="mission-lab-record"><span>Mission record</span><strong>{mission.workload}</strong></div>
     </header>
     {!run ? <>
       <nav className="mission-lab-stations" aria-label="Work stations">
@@ -368,7 +368,7 @@ export function MissionLab({ mission, position, choices, run, saved, meetsGoals,
         <StationEvidence decision={decision} />
           <MissionBoard mission={mission} position={position} selected={selected} select={onChoose} />
         <footer className="mission-lab-footer">
-          <button className="mission-lab-back" type="button" onClick={onBackToEvidence}><ArrowRight size={16} />Return to case file</button>
+          <button className="mission-lab-back" type="button" onClick={onBackToEvidence}><ArrowRight size={16} />Return to mission file</button>
           <span className="mission-lab-state">Selections save as you work.</span>
           {position < mission.decisions.length - 1
             ? <button className="button button-primary" type="button" disabled={!canAdvance} onClick={() => onPosition(position + 1)}>Next station <ArrowRight size={16} /></button>
@@ -376,18 +376,18 @@ export function MissionLab({ mission, position, choices, run, saved, meetsGoals,
         </footer>
       </>}
     </> : <>
-      <div className="mission-lab-result-head"><div><p className="mission-lab-kicker">{workload ? workload.name : "Acceptance replay"}</p><h4>{saved ? "Saved city outcome" : meetsGoals ? "Configuration meets the assignment target" : "The work area needs another pass"}</h4></div><Pill tone={meetsGoals ? "good" : "warn"}>{meetsGoals ? "all targets met" : "adjust and rerun"}</Pill></div>
+      <div className="mission-lab-result-head"><div><p className="mission-lab-kicker">{workload ? workload.name : "Acceptance replay"}</p><h4>{saved ? "Saved city outcome" : meetsGoals ? "Configuration meets the case target" : "The work area needs another pass"}</h4></div><Pill tone={meetsGoals ? "good" : "warn"}>{meetsGoals ? "all targets met" : "adjust and rerun"}</Pill></div>
       {workload && baseWorkload ? <WorkloadReplay workload={workload} baseline={baseWorkload} /> : <ReplayRows mission={mission} replay={replay} />}
       <div className="mission-lab-footer mission-lab-footer--result">
-        <button className="mission-lab-back" type="button" onClick={onBackToEvidence}><ArrowRight size={16} />Open case notes</button>
-        <span className="mission-lab-state">Replays use the same authored case facts each time.</span>
+        <button className="mission-lab-back" type="button" onClick={onBackToEvidence}><ArrowRight size={16} />Open mission notes</button>
+        <span className="mission-lab-state">Replays use the same authored mission facts each time.</span>
         {saved ? <button className="button button-primary" type="button" onClick={onAdjust}>Revisit work area</button> : <>
           <button className="button button-outline" type="button" onClick={onAdjust}><SlidersHorizontal size={16} />Adjust configuration</button>
-          {meetsGoals && <button className="button button-primary" type="button" disabled={busy} onClick={onSave}><BadgeCheck size={16} />Save assignment outcome</button>}
+          {meetsGoals && <button className="button button-primary" type="button" disabled={busy} onClick={onSave}><BadgeCheck size={16} />Save mission outcome</button>}
         </>}
       </div>
-      {error && <p className="academy-error" role="alert">This browser could not save the assignment. Keep this work area open and try again.</p>}
-      {saved && <p className="academy-positive" role="status">Assignment outcome saved to City impact.</p>}
+      {error && <p className="academy-error" role="alert">This browser could not save the mission. Keep this work area open and try again.</p>}
+      {saved && <p className="academy-positive" role="status">Mission outcome saved to City impact.</p>}
     </>}
   </section>;
 }

@@ -1,9 +1,10 @@
-const collectionFields = new Set(["attempts", "capstones", "checkHistory", "guide", "seen", "interviewed", "lensItems", "reviewed"]);
+const collectionFields = new Set(["attempts", "capstones", "checkHistory", "guide", "seen", "interviewed", "lensItems", "reviewed", "studied", "days", "shifts"]);
 const achievementFields = new Set(["assignment", "workshop", "legacyVerified", "debriefSeen", "practiced"]);
-const mapFields = new Set(["answers", "rehearsalArchives", "lensExposure"]);
+const mapFields = new Set(["answers", "rehearsalArchives", "lensExposure", "reviews", "concepts"]);
 const incompatible = Symbol("conflicting changes");
 
-export const maxProgressSaveBytes = 524_288;
+// Matches the learner_progress payload check (supabase/migrations/20261124230000_progress_payload_limit.sql).
+export const maxProgressSaveBytes = 2_097_152;
 export const fitsProgressSave = (value: string) => new TextEncoder().encode(value).length <= maxProgressSaveBytes;
 
 function record(value: unknown): value is Record<string, unknown> {

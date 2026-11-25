@@ -138,7 +138,7 @@ export function streetlamp(kit: ModelKit, parent: THREE.Object3D, x: number, z: 
   kit.cylinder(pole, [0, .11, 0], .26, .22, iron);
   kit.cylinder(pole, [0, 1.05, 0], .088, 2.02, iron, true);
   kit.box(pole, [.16, 2.01, 0], [.36, .065, .067], iron);
-  kit.box(pole, [.3, 1.91, 0], [.19, .19, .2], kit.material("#ffe5aa"), true);
+  Object.assign(kit.box(pole, [.3, 1.91, 0], [.19, .19, .2], kit.material("#ffe5aa"), true).userData, { glow: 1.7, lamp: true, pool: 1.99 });
   kit.cylinder(pole, [.3, 2.036, 0], .27, .09, iron, true);
   return pole;
 }
@@ -204,17 +204,13 @@ function signalPhase(intersection: Intersection, axis: Axis, time: number): Ligh
   return phase < 10 || phase >= 19.45 ? "red" : phase < 18 ? "green" : "amber";
 }
 
-function addSignals(kit: ModelKit, parent: THREE.Group, dynamic: THREE.Group, intersection: Intersection) {
+type SignalBulb = { matrix: THREE.Matrix4; name: Light; active: (time: number) => Light };
+
+function addSignals(kit: ModelKit, parent: THREE.Group, bulbs: SignalBulb[], intersection: Intersection) {
   const { x, z, hx, hz } = intersection;
   const poles = kit.material("#56615c");
   const casework = kit.material("#383d39");
-  const dim = kit.material("#62655b");
-  const lights = { red: kit.material("#e35b40"), amber: kit.material("#ffc050"), green: kit.material("#4fae71") };
-  for (const [name, color] of [["red", "#c94b29"], ["amber", "#cc811a"], ["green", "#278b50"]] as const) {
-    lights[name].emissive.set(color);
-    lights[name].emissiveIntensity = 1.1;
-  }
-  const updates: ((time: number) => void)[] = [];
+  const bulb = new THREE.Object3D();
   for (const approach of [
     { axis: "north-south", px: x + hx + .47, pz: z - hz - .46, sx: x + hx * .46, sz: z - hz - .46, yaw: 0 },
     { axis: "north-south", px: x - hx - .47, pz: z + hz + .46, sx: x - hx * .46, sz: z + hz + .46, yaw: Math.PI },
@@ -230,18 +226,68 @@ function addSignals(kit: ModelKit, parent: THREE.Group, dynamic: THREE.Group, in
     const housing = kit.group(parent, [sx, 2.66, sz], yaw);
     kit.box(housing, [0, 0, 0], [.264, .605, .152], casework, true);
     for (const h of [-.167, 0, .167]) kit.box(housing, [0, h + .075, .111], [.17, .047, .111], casework, true);
-    const bulbs = kit.group(dynamic, [sx, 2.66, sz], yaw);
-    const lamps = (["red", "amber", "green"] as const).map((name, index) => {
-      const lamp = kit.sphere(bulbs, [0, .167 - index * .167, .114], [.146, .146, .067], dim);
-      lamp.castShadow = false;
-      return { name, lamp };
-    });
-    updates.push((time) => {
-      const active = signalPhase(intersection, axis, time);
-      for (const { name, lamp } of lamps) lamp.material = name === active ? lights[name] : dim;
+    const active = (time: number) => signalPhase(intersection, axis, time);
+    (["red", "amber", "green"] as const).forEach((name, index) => {
+      // Same placement as a sphere inside a yawed housing group at (sx, 2.66, sz).
+      bulb.position.set(sx, 2.66, sz);
+      bulb.rotation.set(0, yaw, 0);
+      bulb.updateMatrix();
+      const local = new THREE.Matrix4().compose(new THREE.Vector3(0, .167 - index * .167, .114), new THREE.Quaternion(),
+        new THREE.Vector3(.146, .146, .067));
+      bulbs.push({ matrix: bulb.matrix.clone().multiply(local), name, active });
     });
   }
-  return (time: number) => updates.forEach((update) => update(time));
+}
+
+/**
+ * Every signal bulb in downtown shares four instanced draws (unlit, red, amber, green) instead of one mesh per bulb.
+ * A bulb is shown in exactly one of its two candidate sets by zero-scaling the other instance.
+ */
+function signalLights(kit: ModelKit, dynamic: THREE.Group, bulbs: SignalBulb[]) {
+  const dim = kit.material("#62655b");
+  const lights = { red: kit.material("#e35b40"), amber: kit.material("#ffc050"), green: kit.material("#4fae71") };
+  for (const [name, color] of [["red", "#c94b29"], ["amber", "#cc811a"], ["green", "#278b50"]] as const) {
+    lights[name].emissive.set(color);
+    lights[name].emissiveIntensity = 1.1;
+  }
+  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+  const make = (material: THREE.Material, count: number) => {
+    const mesh = new THREE.InstancedMesh(kit.ballGeometry, material, Math.max(1, count));
+    mesh.count = count;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    dynamic.add(mesh);
+    return mesh;
+  };
+  const tally = (name: Light) => bulbs.filter((bulb) => bulb.name === name).length;
+  const unlit = make(dim, bulbs.length);
+  const lit = { red: make(lights.red, tally("red")), amber: make(lights.amber, tally("amber")), green: make(lights.green, tally("green")) };
+  const used = { red: 0, amber: 0, green: 0 };
+  const slots = bulbs.map(({ matrix, name }, index) => {
+    const slot = used[name]++;
+    lit[name].setMatrixAt(slot, matrix);
+    unlit.setMatrixAt(index, matrix);
+    return slot;
+  });
+  for (const mesh of [unlit, ...Object.values(lit)]) mesh.computeBoundingSphere();
+  const state: (Light | null)[] = bulbs.map(() => null);
+  return (time: number) => {
+    let changed = false;
+    for (const [index, { matrix, name, active }] of bulbs.entries()) {
+      const current = active(time);
+      if (state[index] === current) continue;
+      const on = current === name;
+      if (state[index] !== null && (state[index] === name) === on) {
+        state[index] = current;
+        continue;
+      }
+      state[index] = current;
+      unlit.setMatrixAt(index, on ? hidden : matrix);
+      lit[name].setMatrixAt(slots[index], on ? matrix : hidden);
+      changed = true;
+    }
+    if (changed) for (const mesh of [unlit, ...Object.values(lit)]) mesh.instanceMatrix.needsUpdate = true;
+  };
 }
 
 function raisedMedian(kit: ModelKit, parent: THREE.Group, road: Road, start: number, end: number, size: number) {
@@ -281,7 +327,7 @@ export function downtownStreets(kit: ModelKit, parent: THREE.Group, dynamic: THR
   const warmStripe = kit.material("#d7b977");
   const rampStone = kit.material("#b1926d", "pavers");
   const intersections: Intersection[] = [];
-  const signalUpdates: ((time: number) => void)[] = [];
+  const bulbs: SignalBulb[] = [];
   kit.ground(parent, (downtownWest + east) / 2, -1, east - downtownWest, 100, slab, .023);
 
   for (const road of [...eastWest, ...northSouth]) {
@@ -373,7 +419,7 @@ export function downtownStreets(kit: ModelKit, parent: THREE.Group, dynamic: THR
           : horizontal.cross === 0 && x === 65 ? tuckerOliveCrossing
             : { x, z, hx, hz, offset: (x + horizontal.cross + 8) % 20 };
         intersections.push(intersection);
-        signalUpdates.push(addSignals(kit, parent, dynamic, intersection));
+        addSignals(kit, parent, bulbs, intersection);
       }
       if (x === 43 && horizontal.cross === 0) continue; // The Blender street set supplies this pole.
       const pole = streetlamp(kit, parent, x + hx + .83, z + hz + .84);
@@ -412,7 +458,8 @@ export function downtownStreets(kit: ModelKit, parent: THREE.Group, dynamic: THR
   const washington = eastWest[0];
   raisedMedian(kit, parent, washington, 49.6, 59.57, .53);
   raisedMedian(kit, parent, washington, 70.1, 75.34, .44);
-  return { intersections, update: (time: number) => signalUpdates.forEach((update) => update(time)) };
+  const updateSignals = signalLights(kit, dynamic, bulbs);
+  return { intersections, update: updateSignals };
 }
 
 export function followRoad(points: Pair[], speed: number, phase: number, intersections: Intersection[] = [],

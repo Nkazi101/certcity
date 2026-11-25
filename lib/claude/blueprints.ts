@@ -1,6 +1,8 @@
 import type { PlaceId } from "../world";
+import type { ProviderId } from "../certifications/providers";
+import { developerProfessionalTrack } from "./tracks/developer-professional";
 
-export type TrackId = "associate-foundations" | "developer-foundations" | "architect-foundations" | "architect-professional";
+export type TrackId = "associate-foundations" | "developer-foundations" | "architect-foundations" | "architect-professional" | "developer-professional";
 
 export type Domain = {
   id: number;
@@ -11,10 +13,16 @@ export type Domain = {
 
 export type Track = {
   id: TrackId;
+  provider: ProviderId;
   code: string;
   role: string;
   level: "Foundations" | "Professional";
   description: string;
+  /**
+   * Who the exam is for, provider-neutral, so the chooser can recommend one: people who use AI to get work done,
+   * people who write code against it, people who design agent systems, and people who lead organization-wide rollouts.
+   */
+  audience: "use" | "code" | "design" | "lead";
   count: number;
   fee: number;
   guide: string;
@@ -48,8 +56,9 @@ function domain(id: number, title: string, weight: number, ...objectives: string
 
 export const tracks: readonly Track[] = [
   {
-    id: "associate-foundations", code: "CCAO-F", role: "Associate", level: "Foundations",
-    description: "Practice using Claude in everyday work. Give clear instructions, check drafts, and decide when to ask a person to review.",
+    id: "associate-foundations", provider: "anthropic", code: "CCAO-F", role: "Associate", level: "Foundations",
+    description: "For anyone who uses Claude to get work done, at work or in school. No coding needed. The first mission is at Maplewood School, where three families are waiting on enrollment answers.",
+    audience: "use",
     count: 60, fee: 99, place: "school", assignment: "Prepare an enrollment reply",
     guide: `${guideRoot}/1794946524/Claude_Certified_Associate_-_Foundations_Exam_Guide.pdf`,
     prep: `${academy}/path/claude-certified-associate-foundations`,
@@ -64,8 +73,9 @@ export const tracks: readonly Track[] = [
     ],
   },
   {
-    id: "developer-foundations", code: "CCDV-F", role: "Developer", level: "Foundations",
-    description: "Practice with Claude API, Claude Code, and MCP concepts. Read request traces and debug integration failures in simulated cases.",
+    id: "developer-foundations", provider: "anthropic", code: "CCDV-F", role: "Developer", level: "Foundations",
+    description: "For people who write code with the Claude API, Claude Code and MCP. The first mission is a wrong invoice total that got past a restaurant’s importer.",
+    audience: "code",
     count: 53, fee: 125, place: "restaurant", assignment: "Validate a supplier invoice",
     guide: `${guideRoot}/1794946716/Claude_Certified_Developer_-_Foundations_Exam_Guide.pdf`,
     prep: `${academy}/path/claude-certified-developer-foundations`,
@@ -81,8 +91,9 @@ export const tracks: readonly Track[] = [
     ],
   },
   {
-    id: "architect-foundations", code: "CCAR-F", role: "Architect", level: "Foundations",
-    description: "Practice designing agent systems for production. Test orchestration, tool contracts, Claude Code workflows, and recovery decisions in city cases.",
+    id: "architect-foundations", provider: "anthropic", code: "CCAR-F", role: "Architect", level: "Foundations",
+    description: "For people who design how agents, tools and Claude Code fit together. The first mission is City Dispatch telling customers their order doesn’t exist when the lookup timed out.",
+    audience: "design",
     count: 60, fee: 125, place: "dispatch", assignment: "Repair the order lookup",
     guide: `${guideRoot}/1794946250/Claude_Certified_Architect_-_Foundations_Exam_Guide.pdf`,
     prep: `${academy}/page/claude-certified-architect-foundations-prep-courses`,
@@ -95,8 +106,9 @@ export const tracks: readonly Track[] = [
     ],
   },
   {
-    id: "architect-professional", code: "CCAR-P", role: "Architect", level: "Professional",
-    description: "Practice the decisions behind an enterprise deployment. Design integrations, evaluate rollout evidence, and plan how the team will operate the system.",
+    id: "architect-professional", provider: "anthropic", code: "CCAR-P", role: "Architect", level: "Professional",
+    description: "For people who plan organization-wide rollouts: budgets, governance, evaluation and vendors. The first mission is choosing which support assistant Northline Systems should pilot.",
+    audience: "lead",
     count: 63, fee: 175, place: "office", assignment: "Plan a support rollout",
     guide: `${guideRoot}/1794946331/Claude_Certified_Architect_-_Professional_Exam_Guide.pdf`,
     prep: `${academy}/path/claude-certified-architect-professional`,
@@ -110,6 +122,7 @@ export const tracks: readonly Track[] = [
       domain(7, "Developer productivity and enablement", 7, "Configure tools and environments", "Improve team development workflows", "Support operational diagnosis"),
     ],
   },
+  developerProfessionalTrack,
 ];
 
 export function trackTitle(track: Track) {

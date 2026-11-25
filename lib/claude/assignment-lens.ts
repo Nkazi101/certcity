@@ -2,7 +2,7 @@ import { item } from "./items";
 import type { PracticeItem } from "./items";
 import { hasAssignmentWork } from "./assignment-work";
 import type { AssignmentWorkId } from "./assignment-work";
-import { banks } from "./practice";
+import { banks } from "./banks";
 import { missionMappings } from "./missions";
 import type { Mission } from "./missions";
 

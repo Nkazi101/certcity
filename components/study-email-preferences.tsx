@@ -10,8 +10,8 @@ export function StudyEmailPreferences() {
 
   return <section className="academy-panel" id="study-email" aria-labelledby="study-email-title">
     <h2 id="study-email-title">Study email reminders</h2>
-    <p>Get an email when an Academy follow-up, delayed practical case, or City Dispatch follow-up is ready. Reminders use progress saved to your account.</p>
-    {user ? <ReminderSetting key={user.id} userId={user.id} /> : <p>Sign in to manage your reminders.</p>}
+    <p>Get an email when a 7-day review or a 7-day review lab opens. Reminders use progress saved to your account.</p>
+    {user ? <ReminderSetting key={user.id} userId={user.id} /> : <p data-restore="progress">Sign in to manage your reminders.</p>}
   </section>;
 }
 

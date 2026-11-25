@@ -1,10 +1,12 @@
 import type { Domain, Track, TrackId } from "./blueprints";
 import { architectFoundationsLabel, blueprintLabel } from "./blueprints";
+import { developerProfessionalLabel } from "./tracks/developer-professional";
 
 export const decemberVersion = "december-2026";
 export const decemberLabel = "Exam guide v1.1 · December 7, 2026";
 export type ExamVersion = "july-2026" | typeof decemberVersion;
-type UpdatedTrack = Exclude<TrackId, "architect-foundations">;
+/** Tracks whose guide changes on December 7, 2026. CCAR-F (guide v1.1) and CCDV-P (guide v1.0) have one current guide. */
+export type UpdatedTrack = Exclude<TrackId, "architect-foundations" | "developer-professional">;
 
 const guideRoot = "https://cc.sj-cdn.net/instructor/6nizmqk8tpzpfjvt6qmmav7rh/public";
 const domain = (id: number, title: string, weight: number, ...objectives: string[]): Domain => ({ id, title, weight, objectives });
@@ -51,8 +53,12 @@ export const decemberBlueprints: Record<UpdatedTrack, { guide: string; count: nu
   },
 };
 
+export function hasDecemberGuide(id: TrackId): id is UpdatedTrack {
+  return Object.hasOwn(decemberBlueprints, id);
+}
+
 export function decemberBlueprint(track: Track) {
-  return track.id === "architect-foundations" ? undefined : decemberBlueprints[track.id];
+  return hasDecemberGuide(track.id) ? decemberBlueprints[track.id] : undefined;
 }
 
 export function rehearsalBlueprint(track: Track, version?: ExamVersion) {
@@ -61,5 +67,6 @@ export function rehearsalBlueprint(track: Track, version?: ExamVersion) {
 
 export function examGuideLabel(track: Track, version?: ExamVersion) {
   if (track.id === "architect-foundations") return architectFoundationsLabel;
+  if (track.id === "developer-professional") return developerProfessionalLabel;
   return version === decemberVersion ? decemberLabel : blueprintLabel;
 }

@@ -15,7 +15,7 @@ export default function DecemberExamChanges() {
   });
   return <div className="academy-shell">
     <AcademyHeader />
-    <main className="academy-width academy-workspace academy-editorial academy-article">
+    <main id="academy-main" tabIndex={-1} className="academy-width academy-workspace academy-editorial academy-article">
       <SeoBreadcrumbs entries={[{ name: siteName, path: "/" }, { name: "Claude exam practice", path: certificationCatalog.path }, { name: "December exam changes", path: decemberGuidePage.path }]} />
       <header className="academy-workspace-title">
         <h1>{decemberGuidePage.title}</h1>
@@ -31,7 +31,7 @@ export default function DecemberExamChanges() {
             <th scope="row"><a href={`#${track.id}`}>{track.role} {track.level}</a></th><td>{track.count} items</td><td>{revised.count} items</td>
           </tr>)}</tbody>
         </table>
-        <p><Link href="/certifications/architect-foundations">Architect Foundations</Link> follows its November guide, with 60 exam items and the same five domains in CertCity.</p>
+        <p><Link href="/certifications/architect-foundations">Architect Foundations</Link> follows its November guide, with 60 exam items and the same five domains in CertCity. <Link href="/certifications/developer-professional">Developer Professional</Link> launched with guide v1.0 in November 2026 and has no December revision.</p>
       </section>
       {revisions.map(({ track, revised }) => <section className="academy-panel" key={track.id} id={track.id} aria-labelledby={`${track.id}-title`}>
         <h2 id={`${track.id}-title`}>{track.role} {track.level}</h2>
@@ -57,7 +57,7 @@ export default function DecemberExamChanges() {
         <ol className="academy-editorial-list">
           <li>Confirm your test date and open the applicable official guide.</li>
           <li>Use the <Link href={methodologyPage.path}>objective map</Link> to find a city exercise for each skill you want to review.</li>
-          <li>Work through guided practice and try an independent case. Finish with a timed rehearsal for the same guide.</li>
+          <li>Work through guided practice and try an independent scenario. Finish with a timed practice exam for the same guide.</li>
         </ol>
       </section>
     </main>

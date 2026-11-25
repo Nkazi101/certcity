@@ -422,3 +422,8 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+[functions.lab-live]
+# The handler verifies the user's access token with Supabase Auth and applies a daily cap before calling Claude.
+verify_jwt = false
+import_map = "./functions/lab-live/deno.json"

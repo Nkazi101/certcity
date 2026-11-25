@@ -25,7 +25,9 @@ export function isProgressKey(key: string) {
   return key === "simza.city-dispatch.v1" || key === "simza.ccar-f.task-2.2.v1" ||
     key === "certcity.city.active-assignment.v1" ||
     /^certcity\.(city\.(assignment|check)\.v1|mission\.v1)\.[a-z0-9-]{1,64}$/.test(key) ||
-    /^certcity\.practice\.[A-Z-]{1,24}\.[a-z0-9.-]{1,32}$/.test(key);
+    /^certcity\.practice\.[A-Z-]{1,24}\.[a-z0-9.-]{1,32}$/.test(key) ||
+    // Exam dates, lessons studied, daily plans and shifts follow the learner across devices.
+    /^certcity\.(exam-date\.v2|lessons\.v2|today\.v1|shift\.v1)\.[a-z0-9-]{1,64}$/.test(key);
 }
 
 export function readAccountSave(id: string, key: string): AccountSave | null {

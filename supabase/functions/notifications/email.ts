@@ -6,6 +6,7 @@ const trackNames: Record<string, string> = {
   "developer-foundations": "Developer Foundations",
   "architect-foundations": "Architect Foundations",
   "architect-professional": "Architect Professional",
+  "developer-professional": "Developer Professional",
 };
 
 export type Notification = {
@@ -41,17 +42,18 @@ export function notificationEmail(job: Notification, site: URL, projectUrl: URL)
   }
 
   if (!job.recipient) throw new Error("Study reminder has no recipient");
-  let subject = "Your City Dispatch follow-up is ready";
-  let body = "You can now apply your City Dispatch skills to a new scenario at an arts center.";
+  // Wording follows the app: "7-day review" (questions) and "7-day review lab" (hands-on lab).
+  let subject = "Your City Dispatch 7-day review is ready";
+  let body = "A week after City Dispatch, apply the same skills to a new scenario at an arts center.";
   let link = new URL("/?pathway=architect-foundations&mission=dispatch-lookup&study=followup", site);
   if (job.kind !== "dispatch_followup") {
     const name = job.track_id ? trackNames[job.track_id] : undefined;
     if (!name || !job.guide) throw new Error("Study reminder has no matching guide");
     const practical = job.kind === "academy_practical";
-    subject = practical ? `Your next ${name} practical case is ready` : `Your ${name} practice follow-up is ready`;
+    subject = practical ? `Your ${name} 7-day review lab is open` : `Your ${name} 7-day review is ready`;
     body = practical
-      ? "A new practical case opened after your first case. Try the same skills in a different setting."
-      : "A fresh set of questions is ready after your mixed practice session.";
+      ? "A week after you passed the hands-on lab, a new lab tests the same skills in a different situation."
+      : "New questions on the same skills are ready, a week after your mixed practice session.";
     link = new URL(`/certifications/${job.track_id}?guide=${job.guide}${practical ? "#track-practicals" : "#practice-followup"}`, site);
   }
   return {

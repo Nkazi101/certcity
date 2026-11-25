@@ -31,6 +31,8 @@ export type KitchenWork = {
   examples: InvoiceExample[];
   typed: boolean;
   reconcile: boolean;
+  /** Distractor check: lets a schema-valid printed total post over the line-sum hold. Absent in saves from before it existed. */
+  trustPrinted?: boolean;
   date: InvoiceRoute;
   conflict: InvoiceRoute;
 };
@@ -64,17 +66,20 @@ export const archiveRequests = {
   maps: { name: "Historic maps", dates: "1904–1912", accession: "MAP-41" },
 } as const;
 
+// Each checklist carries one item that should stay unchecked, so ticking everything fails.
 export const packetFields = [
-  { id: "collection", label: "Collection boundary" },
-  { id: "dates", label: "Date range" },
-  { id: "accession", label: "Accession ID" },
-  { id: "citation", label: "Citation fields" },
+  { id: "collection", label: "Collection boundary", wrong: false },
+  { id: "dates", label: "Date range", wrong: false },
+  { id: "accession", label: "Accession ID", wrong: false },
+  { id: "citation", label: "Citation fields", wrong: false },
+  { id: "transcript", label: "Coordinator’s full transcript", wrong: true },
 ] as const;
 export const briefSections = [
-  { id: "register", label: "Property register", detail: "Completed findings and accession references." },
-  { id: "maps", label: "Map findings", detail: "Verified results from three wards." },
-  { id: "gaps", label: "Coverage gaps", detail: "Two wards remain unchecked." },
-  { id: "retry", label: "Retry record", detail: "The maps worker used its one permitted retry." },
+  { id: "register", label: "Property register", detail: "Completed findings and accession references.", wrong: false },
+  { id: "maps", label: "Map findings", detail: "Verified results from three wards.", wrong: false },
+  { id: "gaps", label: "Coverage gaps", detail: "Two wards remain unchecked.", wrong: false },
+  { id: "retry", label: "Retry record", detail: "The maps worker used its one permitted retry.", wrong: false },
+  { id: "absent", label: "No-record finding", detail: "States that the two unchecked wards hold no matching records.", wrong: true },
 ] as const;
 type PacketField = typeof packetFields[number]["id"];
 type BriefSection = typeof briefSections[number]["id"];
@@ -117,7 +122,7 @@ export function validAssignmentWork(id: string, candidate: unknown): candidate i
         value.examples.every((item) => item && includes(invoices.map(({ id }) => id), item.source) &&
           includes(["readable", "unreadable", "blank"], item.status)) &&
         new Set(value.examples.map(({ source }) => source)).size === value.examples.length &&
-        boolean(value.typed) && boolean(value.reconcile) &&
+        boolean(value.typed) && boolean(value.reconcile) && (value.trustPrinted === undefined || boolean(value.trustPrinted)) &&
         [value.date, value.conflict].every((route) => includes(["unchanged", "repair", "review", "clear"], route));
     case "printworks-rules":
       return [value.naming, value.tone].every((scope) => includes(["user", "project"], scope)) &&
@@ -139,7 +144,7 @@ export function runKitchen(work: KitchenWork) {
     work.examples.some((example) => example.source === source && example.status === status);
   const distinguishes = correctlyPaired("304", "unreadable") && correctlyPaired("blank", "blank");
   const rows = invoices.map((invoice) => {
-    if ("printed" in invoice && work.reconcile) {
+    if ("printed" in invoice && work.reconcile && !work.trustPrinted) {
       return { ...invoice, extracted: `${invoice.printed.toLocaleString("en-US")}¢`, tray: "review", reason: `${(invoice.printed - invoice.sum).toLocaleString("en-US")}¢ above the trusted line sum.` };
     }
     if (invoice.status === "unreadable" || invoice.status === "blank") {
@@ -148,7 +153,8 @@ export function runKitchen(work: KitchenWork) {
         reason: status === "unreadable" ? "Marked total needs a reader." : "No total available to post." };
     }
     return { ...invoice, extracted: "printed" in invoice ? `${invoice.printed.toLocaleString("en-US")}¢` : "Source total",
-      tray: "posted", reason: "printed" in invoice ? "Posted without a line-sum check." : "Source and item lines agree." };
+      tray: "posted", reason: "printed" in invoice ? work.trustPrinted ? "Posted because the printed total is valid integer cents." : "Posted without a line-sum check."
+        : "Source and item lines agree." };
   });
   const exception = (route: InvoiceRoute, conflict: boolean) => {
     if (route === "review") return { tray: "review", reason: conflict ? "Both printed totals sent to the bookkeeper." : "Legible date waits for staff." };
@@ -163,7 +169,7 @@ export function runKitchen(work: KitchenWork) {
   return {
     rows, date, conflict, distinguishes,
     shape: work.typed ? "Amount text rejected at extraction." : "Amount text passed through the output contract.",
-    passes: [distinguishes, work.typed && work.reconcile, date.tray === "repaired" && conflict.tray === "review"],
+    passes: [distinguishes, work.typed && work.reconcile && !work.trustPrinted, date.tray === "repaired" && conflict.tray === "review"],
     posted: rows.filter(({ tray }) => tray === "posted").length,
     held: rows.filter(({ tray }) => tray === "review").length,
     mismatchHeld: rows.find(({ id }) => id === "303")?.tray === "review",
@@ -187,7 +193,8 @@ export function runArchive(work: ArchiveWork) {
   const workers = (["register", "maps"] as const).map((id) => ({
     id,
     ...archiveRequests[id],
-    missing: packetFields.filter((field) => !work.packets[id].includes(field.id)),
+    missing: packetFields.filter((field) => !field.wrong && !work.packets[id].includes(field.id)),
+    extra: packetFields.filter((field) => field.wrong && work.packets[id].includes(field.id)),
   }));
   const assignment = work.south === "maps" ? "South ward assigned to Historic maps."
     : work.south === "register" ? "Property register has no map holdings for the south ward."
@@ -195,11 +202,12 @@ export function runArchive(work: ArchiveWork) {
         : "South ward still has no worker.";
   const preserved = work.keepRegister ? "Completed register findings retained." : "Completed register findings removed from the desk.";
   const scoped = work.access === "assigned";
-  const packetReady = workers.every(({ missing }) => !missing.length) && scoped;
+  const packetReady = workers.every(({ missing, extra }) => !missing.length && !extra.length) && scoped;
   const brief = briefSections.filter(({ id }) => work.brief.includes(id));
+  const briefReady = briefSections.every(({ id, wrong }) => work.brief.includes(id) !== wrong);
   return {
     assignment, preserved, workers, packetReady, brief,
-    passes: [work.keepRegister && work.south === "maps", packetReady && work.parallel, brief.length === briefSections.length],
+    passes: [work.keepRegister && work.south === "maps", packetReady && work.parallel, briefReady],
   };
 }
 
@@ -212,7 +220,7 @@ export function assignmentChoices(work: AssignmentWork): Choices {
       return fieldworkChoices(work);
     case "kitchen-extract": {
       const result = runKitchen(work);
-      return { "4.2": [result.distinguishes ? 1 : work.examples.length === 2 ? 2 : 0], "4.3": [work.typed ? 1 : 0, work.reconcile ? 3 : 2],
+      return { "4.2": [result.distinguishes ? 1 : work.examples.length === 2 ? 2 : 0], "4.3": [work.typed ? 1 : 0, work.reconcile && !work.trustPrinted ? 3 : 2],
         "4.4": [result.passes[2] ? 1 : work.date === "clear" && work.conflict === "clear" ? 2 : 0] };
     }
     case "printworks-rules": {
@@ -259,7 +267,7 @@ export function assignmentOutcome(work: AssignmentWork) {
     }
     case "archive-coordination": {
       const result = runArchive(work);
-      return `Editor’s brief · ${result.brief.length} of 4 sections · Unchecked wards disclosed 0 → ${result.brief.some(({ id }) => id === "gaps") ? 2 : 0}`;
+      return `Editor’s brief · ${result.brief.filter(({ wrong }) => !wrong).length} of 4 sections · Unchecked wards disclosed 0 → ${result.brief.some(({ id }) => id === "gaps") ? 2 : 0}`;
     }
   }
 }

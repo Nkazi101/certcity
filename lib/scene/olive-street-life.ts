@@ -16,6 +16,9 @@ export function oliveStreetLife(kit: ModelKit, scene: THREE.Scene, upgradeVan: (
   const shadows = kit.group(scene, [0, 0, 0]);
   const contact: { object: THREE.Object3D; shadow: THREE.Mesh; elevation: number }[] = [];
   function shadowFor(object: THREE.Object3D, width: number, depth: number, elevation: number) {
+    // Every figure and the van already sit on the shared instanced contact shadow; the lean tier skips this softer
+    // second shadow, which costs one transparent draw each.
+    if (kit.lean) return;
     const shadow = kit.contactShadow(shadows, 0, 0, width, depth, elevation);
     contact.push({ object, shadow, elevation });
   }
@@ -26,6 +29,7 @@ export function oliveStreetLife(kit: ModelKit, scene: THREE.Scene, upgradeVan: (
   const cap = kit.material("#527466");
   kit.sphere(nolan.head, [0, .341, .004], [.5, .19, .49], cap);
   kit.box(nolan.head, [0, .313, .16], [.38, .051, .29], cap, true);
+  kit.batchActor(nolan.head);
   const print = kit.group(nolan.chest, [0, .265, .49]);
   const photoMaterial = new THREE.MeshStandardMaterial({ color: "#a29a83", roughness: .87 });
   let disposed = false;
@@ -97,6 +101,9 @@ export function oliveStreetLife(kit: ModelKit, scene: THREE.Scene, upgradeVan: (
   }
   const parcel = deliveryBox(courier.chest, [0, -.016, .438]);
   const droppedParcel = deliveryBox(people, [53.65, .245, -3.55]);
+  // Props that show, hide or move as a unit become one draw each.
+  kit.batchActor(parcel);
+  kit.batchActor(droppedParcel);
   shadowFor(courier.person, .76, .83, .141);
 
   const crossing = [
@@ -134,6 +141,7 @@ export function oliveStreetLife(kit: ModelKit, scene: THREE.Scene, upgradeVan: (
   const server = makePerson(kit, people, ["#28786d", "#d39364", "#42332a"], 1.36, 6, 1.04);
   kit.box(server.chest, [0, .136, .205], [.355, .387, .055], kit.material("#e6c976"), true);
   kit.box(server.chest, [0, .093, .248], [.173, .113, .021], kit.material("#c39154"), true);
+  kit.batchActor(server.chest);
   const tray = kit.group(server.person, [0, .65, .40]);
   kit.cylinder(tray, [0, 0, 0], .65, .04, kit.material("#925733"));
   kit.cylinder(tray, [0, .024, 0], .605, .018, kit.material("#c58a4c"));
@@ -149,6 +157,11 @@ export function oliveStreetLife(kit: ModelKit, scene: THREE.Scene, upgradeVan: (
   const tableCoffee = kit.group(people, [0, 0, 0], 1.06);
   coffee(tableCoffee, -.19);
   coffee(tableCoffee, .19);
+  kit.batchActor(carriedCoffee);
+  kit.batchActor(tableCoffee);
+  carriedCoffee.visible = false;
+  kit.batchActor(tray);
+  carriedCoffee.visible = true;
   shadowFor(server.person, .78, .75, .073);
 
   const van = makeVehicle(kit, scene, "#eadcbd", true);

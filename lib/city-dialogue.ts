@@ -15,19 +15,19 @@ export const introductions: Record<CityAssignmentId, { portrait: string; greetin
   },
   "architect-professional": {
     portrait: "priya",
-    greeting: "I’m Priya. We’ve been asked to pilot a support assistant. I have two candidates and one shift’s worth of test tickets.",
-    evidence: "Operations set a latency target. Finance set a cost ceiling. Support has the final say on disputes. All three conditions matter to the pilot.",
-    question: "Which candidate and dispute control would you put in the pilot? Let’s replay the shift and compare the result with the release conditions.",
+    greeting: "I’m Priya. We’ve been asked to pilot a support assistant. I have two candidates and a day’s worth of test tickets.",
+    evidence: "Operations set a latency target. Finance set a cost ceiling. Support has the final say on disputes.",
+    question: "Which candidate and dispute control would you put in the pilot? Let’s replay those tickets and compare the result with the release conditions.",
   },
 };
 
 export const dispatchConversation = [
   { name: "Nia Brooks", role: "Customer support lead", portrait: "nia", question: "What happened to the shipment?",
-    line: "A customer gave us a tracking number. We told them their shipment didn’t exist. Now the support desk has to call them back. Can you find out what the lookup actually returned?" },
+    line: "A customer gave us tracking number T-17. We told them their shipment didn’t exist, and now they’re on the callback bench. Can you find out what the lookup actually returned? I’d repair the lookup before working a counter shift, but the counter’s open whenever you want it." },
   { name: "Arun Mehta", role: "Integration engineer", portrait: "arun", question: "Can I see what the lookup returned?",
     line: "Here’s T-17. The gateway recorded a timeout, but the customer saw the same reply we send when a search finishes with zero rows. The lookup is read-only, so we can test a recovery rule on the same ticket." },
-  { name: "Jo Rivera", role: "Operations lead", portrait: "jo", question: "What should a successful shift look like?",
-    line: "Get false ‘order not found’ replies to zero and reduce staff follow-up. Keep access rules in place. You can replay the ticket, change the recovery rules, then compare the full shift." },
+  { name: "Jo Rivera", role: "Operations lead", portrait: "jo", question: "What should a good replay week look like?",
+    line: "Get false ‘order not found’ replies to zero and reduce staff follow-up. Keep access rules in place. You can replay the ticket, change the recovery rules, then compare the full replay week." },
 ] as const;
 
 export const previewConversations = {

@@ -110,7 +110,8 @@ async function verify() {
   assert.equal(readProgressItem(key), laptop);
   assert.ok(recoveryCopies().some(({ value }) => value === phone), "restore preserves the previous copy");
 
-  const extra = JSON.stringify({ outcome: "é".repeat(300_000) });
+  // 1.1 million two-byte characters: under the cap in characters, over it in bytes.
+  const extra = JSON.stringify({ outcome: "é".repeat(1_100_000) });
   assert.equal(fitsProgressSave(extra), false, "the database cap is measured in bytes");
   assert.ok(parseProgressBackup(JSON.stringify({ ...exported, entries: [{ key, value: extra }] })), "oversize saves can be backed up");
   assert.equal(parseProgressBackup(JSON.stringify({ ...exported, entries: [{ key: "unrelated.auth", value: "ignored" }] })), null);

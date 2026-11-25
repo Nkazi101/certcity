@@ -1,27 +1,29 @@
-import { ArrowLeft, ArrowUpRight, CodeXml, Compass, Layers3, UsersRound } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CircleHelp } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { partnerCatalog, partnerFAQ, pearson } from "../../lib/claude/blueprints";
-import type { TrackId } from "../../lib/claude/blueprints";
 import { AccountButton } from "../account";
+import styles from "./chrome.module.css";
 
-export const trackIcons = {
-  "associate-foundations": UsersRound,
-  "developer-foundations": CodeXml,
-  "architect-foundations": Layers3,
-  "architect-professional": Compass,
-} satisfies Record<TrackId, typeof Compass>;
-
-export function AcademyHeader() {
+export function AcademyHeader({ current }: { current?: "tracks" | "help" } = {}) {
   return (
     <header className="academy-header">
-      <div className="academy-width academy-header-inner">
+      <a className={styles.skip} href="#academy-main">Skip to main content</a>
+      <div className={`academy-width academy-header-inner ${styles.header}`}>
         <Link className="academy-wordmark" href="/" prefetch={false} aria-label="CertCity home">
-          <img src="/brand/wordmark-primary.svg" width={2000} height={545} alt="" />
+          <picture>
+            <source media="(max-width: 365px)" srcSet="/brand/mark-primary.svg" width={400} height={400} />
+            <img src="/brand/wordmark-primary.svg" width={2000} height={545} alt="" />
+          </picture>
         </Link>
-        <div className="academy-header-actions">
-          <Link className="academy-city-link" href="/" prefetch={false}><ArrowLeft size={16} aria-hidden="true" /> Back to city</Link>
-          <Link className="academy-city-link academy-help-link" href="/help">Study help</Link>
+        <div className={styles.actions}>
+          <nav aria-label="Academy" className={styles.navigation}>
+            <Link href="/" prefetch={false} aria-label="Back to city"><ArrowLeft size={16} aria-hidden="true" /> City</Link>
+            <Link href="/certifications" aria-current={current === "tracks" ? "page" : undefined}>All tracks</Link>
+            <Link href="/help" aria-current={current === "help" ? "page" : undefined} aria-label="Study help" title="Study help">
+              <CircleHelp size={17} aria-hidden="true" /><span>Study help</span>
+            </Link>
+          </nav>
           <AccountButton />
         </div>
       </div>

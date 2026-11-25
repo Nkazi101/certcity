@@ -34,15 +34,18 @@ export type Mission = MissionInfo & (
 
 export type Choices = Record<string, number[]>;
 
+type DecisionOption = readonly [label: string, trace: string, passed?: boolean];
+
+/** Option slots carry explicit outcomes: `proposed` and `second` meet the target unless an option sets its own flag. */
 export function decision(
   objective: Decision["objective"], itemId: string, station: string, evidence: string,
-  current: [string, string], proposed: [string, string], alternative: [string, string], second?: [string, string], other?: [string, string],
+  current: DecisionOption, proposed: DecisionOption, alternative: DecisionOption, second?: DecisionOption, other?: DecisionOption,
 ): Decision {
+  const slots: [DecisionOption, boolean][] = [[current, false], [proposed, true], [alternative, false],
+    ...(second ? [[second, true] as [DecisionOption, boolean]] : []), ...(other ? [[other, false] as [DecisionOption, boolean]] : [])];
   return {
     objective, itemId, station, evidence, combine: !!second,
-    options: [current, proposed, alternative, ...(second ? [second] : []), ...(other ? [other] : [])].map(([label, trace], i) => ({
-      label, trace, passed: i === 1 || i === 3,
-    })),
+    options: slots.map(([[label, trace, passed], fallback]) => ({ label, trace, passed: passed ?? fallback })),
   };
 }
 
@@ -69,6 +72,27 @@ export function stationOptions(missionId: string, decision: Decision) {
     [options[index], options[other]] = [options[other], options[index]];
   }
   return options;
+}
+
+function seeded(text: string) {
+  let seed = 2166136261;
+  for (const character of text) seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
+  return () => {
+    seed = Math.imul(seed ^ (seed >>> 15), 2246822507);
+    seed = Math.imul(seed ^ (seed >>> 13), 3266489909);
+    return ((seed ^= seed >>> 16) >>> 0) / 4294967296;
+  };
+}
+
+/** Display order for a casework field's options. Saved values stay stable; a new retry cycle reshuffles. */
+export function caseOptionOrder(missionId: string, fieldId: string, cycle: number, count: number) {
+  const order = Array.from({ length: count }, (_, index) => index);
+  const random = seeded(`${missionId}:${fieldId}:${cycle}`);
+  for (let index = count - 1; index > 0; index--) {
+    const other = Math.floor(random() * (index + 1));
+    [order[index], order[other]] = [order[other], order[index]];
+  }
+  return order;
 }
 
 export function replayMission(mission: Extract<Mission, { kind: "workbench" }>, choices: Choices) {
